@@ -250,6 +250,15 @@ COMMAND_REGISTRY: dict[str, dict] = {
         "examples": ("hunt install --adapter claude-code --check",),
         "next_hint": "hunt install --adapter claude-code --check",
     },
+    "update": {
+        "group": "ops",
+        "help": "verify and update the installed HUNT-OS package",
+        "actions": (),
+        "read_only": False,
+        "no_db": True,
+        "examples": ("hunt update", "hunt update --check"),
+        "next_hint": "hunt update --check",
+    },
     "harness": {
         "group": "ops",
         "help": "list or diagnose built-in and explicitly registered harnesses",

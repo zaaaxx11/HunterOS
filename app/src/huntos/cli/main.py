@@ -207,7 +207,7 @@ READ_ONLY_ACTIONS = {
 # a doctor FAIL, not the global BLOCKED exit). `shell` holds/opens no db itself:
 # every entered line returns through main(), preserving the same connection
 # lifecycle and workspace-gate path as the ordinary CLI.
-NO_DB_COMMANDS = ("install", "doctor", "adapter", "harness", "shell", "help")
+NO_DB_COMMANDS = ("install", "update", "doctor", "adapter", "harness", "shell", "help")
 
 # The package's shipped data root, resolved from this file
 # (<package>/huntos/_data). `hunt install` delegates to the in-package
@@ -1245,6 +1245,12 @@ def cmd_install(args, conn=None) -> int:
         return code if isinstance(code, int) else 1
 
 
+def cmd_update(args, conn=None) -> int:
+    """Verify and install a release wheel without opening the hunt database."""
+    from huntos import updater
+    return updater.update(args.version, args.check)
+
+
 def cmd_help(args, conn) -> int:
     """`hunt help [verb]`: grouped command help, or per-verb examples.
 
@@ -2222,6 +2228,19 @@ def main(argv=None) -> int:
         help="remove exactly the manifest's files (and now-empty dirs)",
     )
     pi.set_defaults(fn=cmd_install)
+
+    pu = sub.add_parser(
+        "update", help="verify and update the installed HUNT-OS package",
+    )
+    pu.add_argument(
+        "--version", default=None,
+        help="release version to install (defaults to latest)",
+    )
+    pu.add_argument(
+        "--check", action="store_true",
+        help="download and verify the release without installing it",
+    )
+    pu.set_defaults(fn=cmd_update)
 
     # --- safe harness discovery and diagnosis ---
     pharness = sub.add_parser(

@@ -53,6 +53,18 @@ hunt --help
 hunt harness list
 ```
 
+After the first install, update HUNT-OS directly from the verified release
+wheel without running `curl` or `irm` again:
+
+```sh
+hunt update
+hunt update --check
+```
+
+`--check` downloads and verifies the release without changing the installed
+package. `HUNTOS_BASE_URL`, `HUNTOS_REPO`, and `HUNTOS_VERSION` can be set for
+an internal mirror or a pinned release.
+
 On PowerShell `hunt` works immediately in the same shell (the installer
 prepends the venv `Scripts` dir to process `$env:Path` and persists it to
 User PATH for future shells). On POSIX copy-paste the printed
