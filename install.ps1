@@ -39,8 +39,10 @@ $script:CandidateVenv = $null
 $script:BackupVenv = $null
 $script:OldVenvMoved = $false
 $script:NewVenvPromoted = $false
+$script:PromotionAttempted = $false
 $script:InstallSucceeded = $false
 $script:EnvironmentSnapshot = [ordered]@{}
+$script:PathSnapshot = $null
 
 function Write-Err([string]$Message) {
     Write-Host "install.ps1: $Message" -ForegroundColor Red
@@ -257,6 +259,24 @@ function Add-HuntToPath([string]$ScriptsDir) {
     }
 }
 
+function Save-PathSnapshot {
+    if ($null -eq $script:PathSnapshot) {
+        $script:PathSnapshot = [ordered]@{
+            Process = $env:Path
+            User = [Environment]::GetEnvironmentVariable('Path', 'User')
+        }
+    }
+}
+
+function Restore-PathSnapshot {
+    if ($null -eq $script:PathSnapshot) {
+        return
+    }
+    $env:Path = $script:PathSnapshot.Process
+    [Environment]::SetEnvironmentVariable('Path', $script:PathSnapshot.User, 'User')
+    $script:PathSnapshot = $null
+}
+
 function Confirm-HuntCommand([string]$ScriptsDir) {
     $found = Get-Command hunt -ErrorAction SilentlyContinue
     if ($found) {
@@ -282,25 +302,96 @@ function Confirm-HuntCommand([string]$ScriptsDir) {
     }
 }
 
+function Move-WithRetry([string]$Source, [string]$Destination, [string]$Label) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    $lastMessage = $null
+    while ($true) {
+        if (-not (Test-Path -LiteralPath $Source) -and (Test-Path -LiteralPath $Destination)) {
+            return
+        }
+        try {
+            Move-Item -LiteralPath $Source -Destination $Destination -Force -ErrorAction Stop
+            return
+        } catch {
+            $lastMessage = $_.Exception.Message
+            if ([DateTime]::UtcNow -ge $deadline) {
+                throw "could not $Label after 30 seconds. Close running hunt/python processes and check antivirus or permissions. Source='$Source' Destination='$Destination' LastError='$lastMessage'"
+            }
+            [Threading.Thread]::Sleep(250)
+        }
+    }
+}
+
+function Remove-WithRetry([string]$Path, [string]$Label) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    $lastMessage = $null
+    while (Test-Path -LiteralPath $Path) {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            return
+        } catch {
+            $lastMessage = $_.Exception.Message
+            if ([DateTime]::UtcNow -ge $deadline) {
+                throw "could not $Label after 30 seconds. Close running hunt/python processes and check antivirus or permissions. Path='$Path' LastError='$lastMessage'"
+            }
+            [Threading.Thread]::Sleep(250)
+        }
+    }
+}
+
 function Restore-Rollback {
     if ($script:InstallSucceeded) {
         return
     }
-    if ($script:NewVenvPromoted -and (Test-Path -LiteralPath $script:Venv)) {
-        Remove-Item -LiteralPath $script:Venv -Recurse -Force -ErrorAction SilentlyContinue
+    # Reconcile from disk as well as flags: a filesystem move can report an
+    # error after changing one side of the transaction.
+    $backupExists = $script:BackupVenv -and (Test-Path -LiteralPath $script:BackupVenv)
+    $liveExists = $script:Venv -and (Test-Path -LiteralPath $script:Venv)
+    if ($backupExists -and $liveExists) {
+        Remove-WithRetry $script:Venv 'remove the promoted venv during rollback'
+        $liveExists = $false
     }
-    if ($script:OldVenvMoved -and (Test-Path -LiteralPath $script:BackupVenv) -and -not (Test-Path -LiteralPath $script:Venv)) {
-        Move-Item -LiteralPath $script:BackupVenv -Destination $script:Venv -Force -ErrorAction SilentlyContinue
+    if ($backupExists -and -not $liveExists) {
+        Move-WithRetry $script:BackupVenv $script:Venv 'restore the previous venv during rollback'
     }
+    if (-not $backupExists -and $liveExists -and $script:PromotionAttempted) {
+        Remove-WithRetry $script:Venv 'remove the failed fresh venv during rollback'
+    }
+    Restore-PathSnapshot
 }
 
 function Cleanup {
-    Restore-Rollback
-    if ($script:InstallSucceeded -and $script:BackupVenv -and (Test-Path -LiteralPath $script:BackupVenv)) {
-        Remove-Item -LiteralPath $script:BackupVenv -Recurse -Force -ErrorAction SilentlyContinue
+    $cleanupFailure = $null
+    $rollbackCompleted = $false
+    try {
+        Restore-Rollback
+        $rollbackCompleted = $true
+    } catch {
+        $cleanupFailure = $_
     }
-    if ($script:StageRun -and (Test-Path -LiteralPath $script:StageRun)) {
-        Remove-Item -LiteralPath $script:StageRun -Recurse -Force -ErrorAction SilentlyContinue
+    try {
+        if ($script:InstallSucceeded -and $script:BackupVenv -and (Test-Path -LiteralPath $script:BackupVenv)) {
+            Remove-WithRetry $script:BackupVenv 'remove the previous venv backup'
+        }
+    } catch {
+        if (-not $cleanupFailure) { $cleanupFailure = $_ }
+    }
+    try {
+        if (($script:InstallSucceeded -or $rollbackCompleted) -and $script:StageRun -and (Test-Path -LiteralPath $script:StageRun)) {
+            Remove-Item -LiteralPath $script:StageRun -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+        if (-not $cleanupFailure) { $cleanupFailure = $_ }
+    } finally {
+        if ($script:EnvironmentSnapshot.Count -gt 0) {
+            Exit-IsolatedEnvironment
+        }
+        if (-not $script:InstallSucceeded) {
+            Restore-PathSnapshot
+        }
+    }
+    if ($cleanupFailure) {
+        throw $cleanupFailure.Exception
     }
 }
 
@@ -374,7 +465,6 @@ try {
             throw 'HUNTOS_USE_PIPX=1 but pipx is not available.'
         }
         Invoke-Checked 'pipx' @('install', '--force', $wheelPath) 'pipx install failed.'
-        $script:InstallSucceeded = $true
         Write-Host 'install.ps1: installed with pipx (layout is managed by pipx).'
         $pipxHunt = Get-Command hunt -ErrorAction SilentlyContinue
         if ($pipxHunt) {
@@ -386,6 +476,7 @@ try {
         } else {
             Write-Host 'install.ps1: WARNING: hunt not yet on PATH for this shell (pipx layout). Restart the shell, then run: hunt --help'
         }
+        $script:InstallSucceeded = $true
     } else {
         if (Test-Path -LiteralPath $script:Venv -PathType Leaf) {
             throw "$($script:Venv) exists as a file; refusing to replace it."
@@ -403,10 +494,11 @@ try {
         # Keep an existing install untouched until the staged venv is complete
         # and validated.  Both moves are on the same volume for a rollback path.
         if (Test-Path -LiteralPath $script:Venv) {
-            Move-Item -LiteralPath $script:Venv -Destination $script:BackupVenv -Force
+            Move-WithRetry $script:Venv $script:BackupVenv 'move the existing venv to the rollback backup'
             $script:OldVenvMoved = $true
         }
-        Move-Item -LiteralPath $script:CandidateVenv -Destination $script:Venv -Force
+        $script:PromotionAttempted = $true
+        Move-WithRetry $script:CandidateVenv $script:Venv 'promote the staged venv'
         $script:NewVenvPromoted = $true
         $finalPython = Join-Path $script:Venv 'Scripts\python.exe'
         # A venv's entry-point launchers embed their creation path. The staged
@@ -416,20 +508,23 @@ try {
         $repairArgs = @('-m', 'pip', '--isolated', '--disable-pip-version-check', '--no-input', 'install', '--no-index', '--no-deps', '--force-reinstall', $wheelPath)
         Invoke-Checked $finalPython $repairArgs 'pip reinstall of the verified wheel after promotion failed.'
         Validate-Venv $finalPython
-        $script:InstallSucceeded = $true
-
         Write-Host "install.ps1: installed into $script:Venv"
         $scriptsPath = Join-Path $Venv 'Scripts'
+        Save-PathSnapshot
         Add-HuntToPath $scriptsPath
         Write-Host 'install.ps1: hunt works now in this shell; new shells use the persisted User PATH.'
         Confirm-HuntCommand $scriptsPath
+        $script:InstallSucceeded = $true
     }
 } catch {
     $failure = $_
 } finally {
-    Cleanup
-    if ($script:EnvironmentSnapshot.Count -gt 0) {
-        Exit-IsolatedEnvironment
+    try {
+        Cleanup
+    } catch {
+        if (-not $failure) {
+            $failure = $_
+        }
     }
 }
 
