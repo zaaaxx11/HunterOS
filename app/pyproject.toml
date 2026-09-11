@@ -1,6 +1,6 @@
 [project]
 name = "huntos"
-version = "0.3.0"
+version = "0.3.1"
 description = "HUNT-OS - operational framework app for security hunting: state, evidence ladder, enforcement"
 readme = "WALKTHROUGH.md"
 license = { text = "MIT" }

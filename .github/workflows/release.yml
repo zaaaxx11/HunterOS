@@ -71,6 +71,10 @@ jobs:
               export HUNT_DB="$smoke/hunt.db"
               "$envdir/bin/hunt" --help >/dev/null
               "$envdir/bin/python" -m huntos --help >/dev/null
+              "$envdir/bin/hunt" --help | grep -q '^    update '
+              "$envdir/bin/python" -m huntos --help | grep -q '^    update '
+              "$envdir/bin/hunt" update --help >/dev/null
+              test ! -e "$smoke/hunt.db"
               "$envdir/bin/hunt" target list >/dev/null
               test -f "$smoke/hunt.db"
             )
