@@ -218,8 +218,62 @@ function Validate-Venv([string]$PythonPath) {
     if (-not (Test-Path -LiteralPath $hunt -PathType Leaf)) {
         throw "installed wheel did not create the hunt console script in $scriptDir"
     }
-    # `python -m huntos --help` above exercises the same CLI parser; checking
-    # the generated entry point here avoids shell-specific .exe wrapper quirks.
+    # Execute the generated entry point itself: on Windows the .exe launcher
+    # embeds its creation interpreter path, so a moved venv leaves a stale
+    # launcher behind. Running it here fails closed instead of shipping that.
+    Invoke-Checked $hunt @('--help') 'installed hunt entry point failed to launch.'
+}
+
+function Add-HuntToPath([string]$ScriptsDir) {
+    # irm|iex runs in-process, so process PATH changes persist for the
+    # current shell (zero manual steps). Both updates are idempotent.
+    $sessionParts = @()
+    if ($env:Path) {
+        $sessionParts = $env:Path -split ';'
+    }
+    if ($sessionParts -notcontains $ScriptsDir) {
+        $env:Path = $ScriptsDir + ';' + $env:Path
+        Write-Host "install.ps1: added $ScriptsDir to PATH for this session."
+    } else {
+        Write-Host "install.ps1: $ScriptsDir already on PATH for this session."
+    }
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if (-not $userPath) {
+        $userPath = ''
+    }
+    $userParts = @()
+    if ($userPath -ne '') {
+        $userParts = $userPath -split ';'
+    }
+    if ($userParts -notcontains $ScriptsDir) {
+        if ($userPath -eq '') {
+            [Environment]::SetEnvironmentVariable('Path', $ScriptsDir, 'User')
+        } else {
+            [Environment]::SetEnvironmentVariable('Path', $ScriptsDir + ';' + $userPath, 'User')
+        }
+        Write-Host 'install.ps1: added Scripts dir to User PATH (future shells).'
+    } else {
+        Write-Host 'install.ps1: Scripts dir already on User PATH.'
+    }
+}
+
+function Confirm-HuntCommand([string]$ScriptsDir) {
+    $found = Get-Command hunt -ErrorAction SilentlyContinue
+    if ($found) {
+        Write-Host 'install.ps1: hunt is on PATH; running hunt --help as final validation:'
+        & hunt --help
+        return
+    }
+    $direct = Join-Path $ScriptsDir 'hunt.exe'
+    if (-not (Test-Path -LiteralPath $direct -PathType Leaf)) {
+        $direct = Join-Path $ScriptsDir 'hunt'
+    }
+    if (Test-Path -LiteralPath $direct -PathType Leaf) {
+        Write-Host 'install.ps1: WARNING: hunt not yet on PATH; running entry point directly:'
+        & $direct --help
+    } else {
+        Write-Host 'install.ps1: WARNING: hunt command not found after install.'
+    }
 }
 
 function Restore-Rollback {
@@ -315,8 +369,15 @@ try {
             throw 'HUNTOS_USE_PIPX=1 but pipx is not available.'
         }
         Invoke-Checked 'pipx' @('install', '--force', $wheelPath) 'pipx install failed.'
-        Write-Host 'install.ps1: installed with pipx (layout is managed by pipx). Run: hunt --help'
         $script:InstallSucceeded = $true
+        Write-Host 'install.ps1: installed with pipx (layout is managed by pipx).'
+        $pipxHunt = Get-Command hunt -ErrorAction SilentlyContinue
+        if ($pipxHunt) {
+            Write-Host 'install.ps1: hunt is on PATH; running hunt --help as final validation:'
+            & hunt --help
+        } else {
+            Write-Host 'install.ps1: WARNING: hunt not yet on PATH for this shell (pipx layout). Restart the shell, then run: hunt --help'
+        }
     } else {
         if (Test-Path -LiteralPath $script:Venv -PathType Leaf) {
             throw "$($script:Venv) exists as a file; refusing to replace it."
@@ -340,17 +401,20 @@ try {
         Move-Item -LiteralPath $script:CandidateVenv -Destination $script:Venv -Force
         $script:NewVenvPromoted = $true
         $finalPython = Join-Path $script:Venv 'Scripts\python.exe'
+        # A venv's entry-point launchers embed their creation path. The staged
+        # venv was built under .staging/<guid>, so reinstall the verified
+        # local wheel after the move to rewrite hunt.exe against the final
+        # absolute path (same repair as install.sh step 5; no index contact).
+        $repairArgs = @('-m', 'pip', '--isolated', '--disable-pip-version-check', '--no-input', 'install', '--no-index', '--no-deps', '--force-reinstall', $wheelPath)
+        Invoke-Checked $finalPython $repairArgs 'pip reinstall of the verified wheel after promotion failed.'
         Validate-Venv $finalPython
         $script:InstallSucceeded = $true
 
         Write-Host "install.ps1: installed into $script:Venv"
-        Write-Host 'install.ps1: add it to PATH for this shell, then run hunt:'
         $scriptsPath = Join-Path $Venv 'Scripts'
-        Write-Host ('  $env:Path = "' + $scriptsPath + ';" + $env:Path')
-        Write-Host 'for a permanent PATH entry (current user), run:'
-        $permanent = '$p = [Environment]::GetEnvironmentVariable("Path", "User"); if (($p -split ";") -notcontains "' + $scriptsPath + '") { [Environment]::SetEnvironmentVariable("Path", "' + $scriptsPath + ';" + $p, "User") }'
-        Write-Host "  $permanent"
-        Write-Host 'then: hunt --help'
+        Add-HuntToPath $scriptsPath
+        Write-Host 'install.ps1: hunt works now in this shell; new shells use the persisted User PATH.'
+        Confirm-HuntCommand $scriptsPath
     }
 } catch {
     $failure = $_

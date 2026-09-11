@@ -325,7 +325,8 @@ validate_install "$VENV" "$ACTIVE_PY" "$STAGE_BINDIR"
 ACTIVE_HUNT="$CHECK_HUNT"
 
 printf 'install.sh: installed into %s\n' "$VENV"
-printf 'install.sh: add it to PATH with:\n'
+printf 'install.sh: curl|bash runs in a child process, so it cannot update your shell PATH directly.\n'
+printf 'install.sh: copy-paste this line to use hunt now (then: hunt --help):\n'
 printf '  export PATH="%s/%s:$PATH"\n' "$VENV" "$STAGE_BINDIR"
-printf 'then: hunt --help\n'
+printf 'install.sh: then: hunt --help\n'
 exit 0

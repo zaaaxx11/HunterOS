@@ -53,6 +53,12 @@ hunt --help
 hunt harness list
 ```
 
+On PowerShell `hunt` works immediately in the same shell (the installer
+prepends the venv `Scripts` dir to process `$env:Path` and persists it to
+User PATH for future shells). On POSIX copy-paste the printed
+`export PATH=...` line first (`curl|bash` runs in a child process and cannot
+update the parent shell).
+
 ### Platform-Specific Instructions
 
 <details>
@@ -111,7 +117,12 @@ GitHub requires TLS 1.2; this pre-step allows the initial download to proceed.
 - The manifest is corrupted. Verify your network connection and retry.
 
 **Hunt commands not found after install**
-- Add the venv's `bin` (POSIX) or `Scripts` (PowerShell) to `PATH` as the installer instructed.
+- On PowerShell the installer applies PATH automatically (`hunt` works in the
+  same shell immediately and User PATH is persisted for new shells). If a
+  shell was already open before the install, restart it or run
+  `$env:Path = "C:\Users\you\.HunterOS\venv\Scripts;" + $env:Path`.
+- On POSIX `curl|bash` runs in a child process and cannot update the parent
+  shell: copy-paste the printed `export PATH=...` line.
 - Verify: `echo $PATH` (POSIX) or `$env:PATH` (PowerShell)
 
 </details>
@@ -132,19 +143,40 @@ Both `0.3.0` and `v0.3.0` resolve to the same tag; omit to use `latest`.
 
 **Use a local mirror:**
 
-```sh
-HUNTOS_BASE_URL=https://mirror.example.com/huntos bash install.sh
-```
+For a reviewed local mirror or release fixture, set `HUNTOS_BASE_URL` to the
+folder containing the canonical wheel and `SHA256SUMS` (it overrides the
+GitHub release URL entirely, e.g. `HUNTOS_BASE_URL=https://mirror.example.com/huntos bash install.sh`).
+Note: `HUNTOS_BASE_URL` only redirects the in-script wheel/`SHA256SUMS` fetch
+after the installer is already running — it does not replace the initial
+installer download. Fully offline means downloading the reviewed installer
+file locally first and running it (`bash install.sh` / `.\install.ps1`).
+The installer refuses
+missing, malformed, or mismatched checksums and never performs an implicit pip
+upgrade. The local override is primarily for controlled mirrors and testing;
+keep HTTPS and a trusted artifact source for normal use.
 
-Set `HUNTOS_BASE_URL` to a folder containing the wheel and `SHA256SUMS` (HTTPS recommended). This redirects the wheel fetch but **not** the initial installer download—for fully offline installation, download the installer locally first.
+By default the bootstrap creates a user-level virtual environment under
+`.HunterOS`: `$HOME/.HunterOS/venv` on POSIX/Git Bash and
+`$env:USERPROFILE\.HunterOS\venv` on PowerShell. Set `HUNTOS_HOME` to choose a
+different root; set `HUNTOS_USE_PIPX=1` only to opt into pipx's own layout. On
+PowerShell the installer applies PATH automatically: `hunt` works in the same
+shell immediately (the Scripts dir is prepended to process `$env:Path` and
+persisted idempotently to User PATH, so new shells find it too; a restart is
+only needed for shells already open before the install). On POSIX `curl|bash`
+runs in a child process and cannot export to the parent shell, so copy-paste
+the printed `export PATH=...` line, then verify from any directory:
+
+```sh
+hunt --help
+python -m huntos --help
+hunt harness list
+```
 
 **Custom installation directory:**
 
 ```sh
 HUNTOS_HOME=/custom/path bash install.sh
 ```
-
-By default, the venv goes to `$HOME/.HunterOS` (POSIX) or `$env:USERPROFILE\.HunterOS` (PowerShell). Set `HUNTOS_USE_PIPX=1` to use pipx's own layout.
 
 **Source-based development:**
 

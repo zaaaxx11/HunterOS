@@ -82,8 +82,9 @@ POSIX/Git Bash or `$env:USERPROFILE\\.HunterOS` on PowerShell); `HUNTOS_HOME`
 can change it. The default ledger and adapter/workspace state are under
 `.huntos`, normally `~/.huntos/hunt.db`. These are different directories:
 `.HunterOS` is replaceable application files, while `.huntos` is persistent
-hunt state. Add the venv's `bin` or `Scripts` directory to `PATH` as the
-installer instructs, then verify:
+hunt state. On PowerShell `hunt` works immediately in the same shell (auto-PATH
++ persisted User PATH); on POSIX copy-paste the printed `export PATH=...`
+line (a child `curl|bash` process cannot update the parent shell), then verify:
 
 ```sh
 hunt --help
