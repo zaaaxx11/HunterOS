@@ -1707,7 +1707,7 @@ def cmd_run(args, conn) -> int:
                 from .render import end_panel as _end_panel3
                 _show_panel(_end_panel3(
                     args.session, status=_capget(session, "status", "?"),
-                    color=None, stream=sys.stdout,
+                    color=False if args.no_color else None, stream=sys.stdout,
                 ))
             except Exception:
                 pass
@@ -1787,6 +1787,10 @@ def main(argv=None) -> int:
     p.add_argument(
         "--json", action="store_true",
         help="emit refusals as a JSON envelope {ok, code, error, next} on stdout",
+    )
+    p.add_argument(
+        "--no-color", dest="no_color", action="store_true",
+        help="disable ANSI decoration in human-facing panels",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -2349,7 +2353,7 @@ def main(argv=None) -> int:
                      help="token budget per attempt (default: unlimited)")
     prs.add_argument("--page", action="store_true",
                      help="render the static four-lane page instead of the legacy summary")
-    prs.add_argument("--no-color", action="store_true",
+    prs.add_argument("--no-color", action="store_true", default=argparse.SUPPRESS,
                      help="disable ANSI decoration on the page")
     prs.set_defaults(fn=cmd_run)
 
@@ -2359,13 +2363,15 @@ def main(argv=None) -> int:
                        help="session id (default: latest_conductor_session)")
     prst2.add_argument("--page", action="store_true",
                        help="render the static four-lane page instead of the legacy summary")
-    prst2.add_argument("--no-color", action="store_true",
+    prst2.add_argument("--no-color", action="store_true", default=argparse.SUPPRESS,
                        help="disable ANSI decoration on the page")
     prst2.set_defaults(fn=cmd_run)
 
     for verb in ("pause", "resume", "abort"):
         prx = prun_sub.add_parser(verb, help=f"{verb} a conductor session")
         prx.add_argument("--session", dest="session", required=True)
+        prx.add_argument("--no-color", action="store_true", default=argparse.SUPPRESS,
+                         help="disable ANSI decoration on the panel")
         prx.set_defaults(fn=cmd_run)
 
     prr = prun_sub.add_parser("retry", help="re-run an interrupted/uncertain attempt "

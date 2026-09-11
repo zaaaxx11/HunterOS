@@ -200,6 +200,18 @@ def test_json_bare_refusal_has_null_next(tmp_path, monkeypatch, capsys):
     assert "MSYS" in payload["error"]
 
 
+def test_no_color_is_accepted_before_and_after_run_command(tmp_path, monkeypatch, capsys):
+    from huntos.cli.main import main
+
+    _isolated_db(tmp_path, monkeypatch)
+    assert main(["--no-color", "run", "status", "--session", "missing"]) == 2
+    first = capsys.readouterr()
+    assert "\x1b[" not in first.out + first.err
+    assert main(["run", "pause", "--session", "missing", "--no-color"]) == 2
+    second = capsys.readouterr()
+    assert "\x1b[" not in second.out + second.err
+
+
 def test_split_blocked_roundtrip():
     from huntos.cli.errors import blocked, split_blocked
 
