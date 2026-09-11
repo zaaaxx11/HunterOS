@@ -5,12 +5,37 @@ import os
 import re
 import shutil
 import sys
+from dataclasses import dataclass
 
 
 _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
-_GREEN = "\x1b[92m"
 _BOLD = "\x1b[1m"
 _RESET = "\x1b[0m"
+
+
+@dataclass(frozen=True)
+class Palette:
+    """Named terminal tones used by human-facing renderers."""
+
+    primary: str
+    success: str
+    info: str
+    warning: str
+    error: str
+    muted: str
+    reset: str = _RESET
+
+
+TEAL = Palette(
+    primary="\x1b[96m",
+    success="\x1b[92m",
+    info="\x1b[36m",
+    warning="\x1b[93m",
+    error="\x1b[91m",
+    muted="\x1b[90m",
+)
+PLAIN = Palette("", "", "", "", "", "", reset="")
+PALETTES = {"teal": TEAL, "turquoise": TEAL, "plain": PLAIN, "none": PLAIN, "off": PLAIN}
 
 
 def enable_windows_vt(stream) -> bool:
@@ -44,12 +69,34 @@ def supports_color(stream, env=None) -> bool:
     return enable_windows_vt(stream)
 
 
-def style(text: str, *, green: bool = False, bold: bool = False, color: bool = True) -> str:
-    """Decorate text and always close enabled decoration with a reset."""
-    if not color or not (green or bold):
+def resolve_palette(stream, *, env=None, requested=None, color=None) -> Palette:
+    """Resolve a palette without emitting warnings or contaminating output."""
+    environment = os.environ if env is None else env
+    if color is False or not supports_color(stream, environment):
+        return PLAIN
+    name = str(requested or environment.get("HUNT_THEME", "teal")).lower()
+    return PALETTES.get(name, PLAIN)
+
+
+def decorate(text: str, *, tone: str = "primary", palette: Palette | None = None,
+             color: bool = True, bold: bool = False) -> str:
+    """Apply a semantic tone while preserving visible text and reset safety."""
+    if not color or palette is None or not palette.reset:
         return text
-    prefix = ("" if not green else _GREEN) + ("" if not bold else _BOLD)
-    return f"{prefix}{text}{_RESET}"
+    if not hasattr(palette, tone):
+        raise ValueError(f"unknown terminal tone: {tone}")
+    prefix = getattr(palette, tone)
+    if not prefix and not bold:
+        return text
+    return f"{prefix}{_BOLD if bold else ''}{text}{palette.reset}"
+
+
+def style(text: str, *, green: bool = False, bold: bool = False, color: bool = True) -> str:
+    """Backward-compatible wrapper for the legacy green/bold API."""
+    if not green and bold:
+        return f"{_BOLD}{text}{_RESET}" if color else text
+    palette = TEAL if color else PLAIN
+    return decorate(text, tone="primary", palette=palette, color=color, bold=bold)
 
 
 def strip_ansi(text: str) -> str:

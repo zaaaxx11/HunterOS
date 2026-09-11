@@ -20,7 +20,7 @@ from __future__ import annotations
 import sys
 
 from .errors import sanitize
-from .terminal import pad_visible, style, supports_color, terminal_width, truncate_visible
+from .terminal import decorate as decorate_text, pad_visible, resolve_palette, terminal_width, truncate_visible
 
 
 def _columns(width=None, stream=None) -> int:
@@ -31,7 +31,7 @@ def _columns(width=None, stream=None) -> int:
 def panel(title: str, rows: list, *, color=None, width=None, stream=None) -> str:
     """Render a bordered static panel: title + rows, width-clamped."""
     stream = sys.stdout if stream is None else stream
-    use_color = supports_color(stream) if color is None else bool(color)
+    palette = resolve_palette(stream, color=color)
     columns = _columns(width, stream)
     inner = columns - 4
     border = "+" + "-" * (columns - 2) + "+"
@@ -39,14 +39,14 @@ def panel(title: str, rows: list, *, color=None, width=None, stream=None) -> str
     def frame(text: str, *, decorate: bool = False) -> str:
         content = pad_visible(truncate_visible(text, inner), inner)
         plain = f"| {content} |"
-        return style(plain, green=True, bold=decorate, color=use_color) if decorate else plain
+        return decorate_text(plain, tone="primary", palette=palette, color=True, bold=decorate)
 
-    lines = [style(border, green=True, color=use_color)]
+    lines = [decorate_text(border, tone="primary", palette=palette)]
     lines.append(frame(title, decorate=True))
-    lines.append(style(border, green=True, color=use_color))
+    lines.append(decorate_text(border, tone="primary", palette=palette))
     for row in rows:
         lines.append(frame(row))
-    lines.append(style(border, green=True, color=use_color))
+    lines.append(decorate_text(border, tone="primary", palette=palette))
     return "\n".join(lines)
 
 

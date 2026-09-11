@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 import sys
 
-from huntos.cli.terminal import pad_visible, style, supports_color, terminal_width, truncate_visible
+from huntos.cli.terminal import decorate as decorate_text, pad_visible, resolve_palette, terminal_width, truncate_visible
 from huntos.core import db
 
 # Lane -> display label (the four blueprint section 5 roles).
@@ -140,7 +140,7 @@ def control_room_page(conn, session_id: str, *, color=None, width=None, stream=N
     if session is None:
         raise ValueError(f"BLOCKED: conductor session '{session_id}' does not exist")
     stream = sys.stdout if stream is None else stream
-    use_color = supports_color(stream) if color is None else bool(color)
+    palette = resolve_palette(stream, color=color)
     columns = terminal_width(stream) if width is None else int(width)
     columns = max(60, min(120, columns))
     inner = columns - 4
@@ -172,16 +172,18 @@ def control_room_page(conn, session_id: str, *, color=None, width=None, stream=N
     def frame(text: str, *, decorate: bool = False) -> str:
         content = pad_visible(truncate_visible(text, inner), inner)
         plain = f"| {content} |"
-        return style(plain, green=True, bold=decorate, color=use_color) if decorate else plain
+        return decorate_text(
+            plain, tone="primary", palette=palette, color=True, bold=decorate
+        )
 
-    lines = [style(border, green=True, color=use_color)]
+    lines = [decorate_text(border, tone="primary", palette=palette)]
     lines.append(frame(f"HUNT-OS CONTROL ROOM / SESSION {session['id']}", decorate=True))
     lines.append(frame(
         f"adapter {adapter_id} v{adapter_version} / status {session['status']} / round {shown_round}"
     ))
     lines.append(frame(f"target #{target['id']} {target['name']} / {source_kind}: {canonical}"))
     lines.append(frame(mode))
-    lines.append(style(border, green=True, color=use_color))
+    lines.append(decorate_text(border, tone="primary", palette=palette))
 
     list_events = getattr(db, "list_conductor_events", None)
     for lane in db.CONDUCTOR_LANES:
@@ -217,9 +219,9 @@ def control_room_page(conn, session_id: str, *, color=None, width=None, stream=N
                     lines.append(frame("  " + _event_line(event)))
             else:
                 lines.append(frame("  no recorded operational events"))
-        lines.append(style(border, green=True, color=use_color))
+        lines.append(decorate_text(border, tone="primary", palette=palette))
 
     next_line = "NEXT  " + compute_next_action(session, attempts, incidents)
     lines.append(frame(next_line, decorate=True))
-    lines.append(style(border, green=True, color=use_color))
+    lines.append(decorate_text(border, tone="primary", palette=palette))
     return "\n".join(lines)
