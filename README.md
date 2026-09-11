@@ -84,6 +84,15 @@ User PATH for future shells). On POSIX copy-paste the printed
 `export PATH=...` line first (`curl|bash` runs in a child process and cannot
 update the parent shell).
 
+Run the PowerShell bootstrap from an existing PowerShell prompt with `irm |
+iex` so the prompt remains open. A standalone `powershell.exe -File` process
+normally closes its own window when the script finishes; use `-NoExit` only
+when you intentionally want that window to remain visible:
+
+```powershell
+powershell.exe -NoProfile -NoExit -File .\install.ps1
+```
+
 ### Platform-Specific Instructions
 
 <details>

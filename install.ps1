@@ -262,6 +262,9 @@ function Confirm-HuntCommand([string]$ScriptsDir) {
     if ($found) {
         Write-Host 'install.ps1: hunt is on PATH; running hunt --help as final validation:'
         & hunt --help
+        if ($LASTEXITCODE -ne 0) {
+            throw "installed hunt command failed --help validation (exit $LASTEXITCODE)."
+        }
         return
     }
     $direct = Join-Path $ScriptsDir 'hunt.exe'
@@ -271,6 +274,9 @@ function Confirm-HuntCommand([string]$ScriptsDir) {
     if (Test-Path -LiteralPath $direct -PathType Leaf) {
         Write-Host 'install.ps1: WARNING: hunt not yet on PATH; running entry point directly:'
         & $direct --help
+        if ($LASTEXITCODE -ne 0) {
+            throw "installed hunt entry point failed --help validation (exit $LASTEXITCODE)."
+        }
     } else {
         Write-Host 'install.ps1: WARNING: hunt command not found after install.'
     }
@@ -329,7 +335,6 @@ try {
     $base = Get-ReleaseBase $repo $requestedVersion
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
 
-    Enter-IsolatedEnvironment
     $sumsPath = Join-Path $script:StageRun 'SHA256SUMS'
     try {
         Invoke-WebRequest -Uri "$base/SHA256SUMS" -OutFile $sumsPath -UseBasicParsing
@@ -375,6 +380,9 @@ try {
         if ($pipxHunt) {
             Write-Host 'install.ps1: hunt is on PATH; running hunt --help as final validation:'
             & hunt --help
+            if ($LASTEXITCODE -ne 0) {
+                throw "pipx hunt command failed --help validation (exit $LASTEXITCODE)."
+            }
         } else {
             Write-Host 'install.ps1: WARNING: hunt not yet on PATH for this shell (pipx layout). Restart the shell, then run: hunt --help'
         }
