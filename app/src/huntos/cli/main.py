@@ -155,6 +155,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import io
+import json
 import math
 import os
 import re
@@ -169,6 +170,13 @@ from pathlib import Path
 from ..core import db, fuzz
 from ..core.models import PHASE_ARTIFACTS, ROE_ACTIONS, SEVERITY
 from ..conductor.adapter import MockAdapter
+from .errors import (
+    MSYS_BLOCKED_MSG as _MSYS_BLOCKED_MSG,
+    MSYS_MANGLED_RE as _MSYS_MANGLED_RE,
+    blocked as _blocked_line,
+    is_msys_mangled as _is_msys_mangled,
+    split_blocked as _split_blocked,
+)
 
 # SURFACE_KINDS lives in db.py (capability stack db layer): the surface
 # subparser validates kinds against the same DATA the db enforces.
@@ -230,18 +238,35 @@ def _is_read_only(args) -> bool:
 # (poc-path, artifact paths, --out) are never guarded — a real
 # 'C:\\Users\\...\\poc.py' does not match the pattern and must keep working.
 
-_MSYS_MANGLED_RE = re.compile(r"^[A-Za-z]:[\\/]+Program Files[\\/]+Git[\\/]+")
-
-_MSYS_BLOCKED_MSG = (
-    "BLOCKED: argument looks MSYS-mangled (leading '/' became a Git path). "
-    "Prefix the command with MSYS_NO_PATHCONV=1, or do not start the argument with /."
-)
+# Canonical shape lives in cli/errors.py (imported above as _MSYS_*); only
+# FREE-TEXT positionals are guarded (finding titles, lesson patterns/sources);
+# real file-path arguments are never guarded.  The module-level names stay
+# importable here for backward compatibility (tests import _MSYS_BLOCKED_MSG).
 
 
 def _reject_msys_mangled(text: str) -> None:
     """Refuse a free-text argument that arrived MSYS-mangled (L2.2)."""
-    if text and _MSYS_MANGLED_RE.match(text):
+    if _is_msys_mangled(text):
         raise ValueError(_MSYS_BLOCKED_MSG)
+
+
+def _emit_refusal(line: str, as_json: bool) -> None:
+    """Refusal output (Phase 3, Strix human/machine duality).
+
+    Human default: the ``BLOCKED: ... | NEXT: ...`` line to stderr (stdout
+    stays machine-clean).  With ``--json``: a machine envelope to stdout::
+
+        {"ok": false, "code": 2, "error": "<what>", "next": "<cmd>" | null}
+
+    ``next`` is null for bare refusals whose remediation is inline (the MSYS
+    guard, the workspace-lock line).  The exit code is always 2 — argparse
+    misuse stays 2 as well.  Success output is unchanged by ``--json``.
+    """
+    if not as_json:
+        print(line, file=sys.stderr)
+        return
+    error, next_cmd = _split_blocked(line)
+    print(json.dumps({"ok": False, "code": 2, "error": error, "next": next_cmd}))
 
 
 def cmd_target(args, conn) -> int:
@@ -1134,7 +1159,8 @@ def cmd_help(args, conn) -> int:
     meta = COMMAND_REGISTRY.get(args.verb)
     if meta is None:
         raise ValueError(
-            f"BLOCKED: unknown command {args.verb!r} — try 'hunt help'"
+            f"BLOCKED: unknown command {args.verb!r} — try 'hunt help' "
+            "| NEXT: hunt help"
         )
     actions = f" ({'/'.join(meta['actions'])})" if meta["actions"] else ""
     print(f"{args.verb}{actions} — {meta['help']}")
@@ -1418,7 +1444,10 @@ def cmd_doctor(args, conn) -> int:
 def _adapter_for_session(conn, session_id: str):
     session = db.get_conductor_session(conn, session_id)
     if session is None:
-        raise ValueError(f"BLOCKED: conductor session '{session_id}' does not exist")
+        raise ValueError(
+            f"BLOCKED: conductor session '{session_id}' does not exist "
+            "| NEXT: hunt run status"
+        )
     recorded = session["adapter_id"] or ""
     if recorded in {"mock", "mock-harness"}:
         return _build_adapter("mock")
@@ -1488,7 +1517,8 @@ def cmd_run(args, conn) -> int:
         # even before the summary renderer runs.
         if db.get_conductor_session(conn, args.session) is None:
             raise ValueError(
-                f"BLOCKED: conductor session '{args.session}' does not exist"
+                f"BLOCKED: conductor session '{args.session}' does not exist "
+                "| NEXT: hunt run status"
             )
         if args.page:
             print(control_room_page(
@@ -1504,7 +1534,10 @@ def cmd_run(args, conn) -> int:
     elif action == "retry":
         recorded_attempt = db.get_conductor_attempt(conn, args.attempt)
         if recorded_attempt is None:
-            raise ValueError(f"BLOCKED: conductor attempt '{args.attempt}' does not exist")
+            raise ValueError(
+                f"BLOCKED: conductor attempt '{args.attempt}' does not exist "
+                "| NEXT: hunt run status"
+            )
         adapter = _adapter_for_session(conn, recorded_attempt["session_id"])
     else:
         adapter = _build_adapter("mock")
@@ -1575,6 +1608,15 @@ def main(argv=None) -> int:
     p.add_argument(
         "--show-context", action="store_true",
         help="print the current target/phase/wave/session line to stderr, then run",
+    )
+    # Machine surface (Phase 3, step 11): `hunt --json <verb> ...` emits the
+    # refusal envelope {"ok","code","error","next"} to stdout instead of the
+    # human BLOCKED line to stderr.  Human text stays the default; success
+    # output is unchanged.  Exit codes: 0 ok, 1 installer conflict/check
+    # failure, 2 every refusal + argparse misuse.
+    p.add_argument(
+        "--json", action="store_true",
+        help="emit refusals as a JSON envelope {ok, code, error, next} on stdout",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -2187,7 +2229,7 @@ def main(argv=None) -> int:
             # ("BLOCKED: cannot open hunt db ...") — sqlite3.Error only catches the
             # directory-path case, so a garbage FILE leaked a raw traceback.
             path = os.environ.get("HUNT_DB", os.path.expanduser("~/.huntos/hunt.db"))
-            print(f"BLOCKED: cannot open the hunt db ({path}): {e}", file=sys.stderr)
+            _emit_refusal(_blocked_line(f"cannot open the hunt db ({path}): {e}"), args.json)
             return 2
     try:
         # Workspace lock (P5): the db is the project's single notebook. A
@@ -2209,24 +2251,26 @@ def main(argv=None) -> int:
                     detail = lock_msg[len("BLOCKED: "):] if lock_msg.startswith("BLOCKED: ") else lock_msg
                     print(f"WARNING: {detail} (read-only command — allowed)", file=sys.stderr)
                 else:
-                    print(lock_msg, file=sys.stderr)
+                    _emit_refusal(_blocked_line(lock_msg), args.json)
                     return 2
         rc = args.fn(args, conn)
     except ValueError as e:
-        msg = str(e)
-        if not msg.startswith("BLOCKED:"):
-            msg = f"BLOCKED: {msg}"
-        print(msg, file=sys.stderr)
+        # Phase 3: every refusal speaks the unified BLOCKED|NEXT shape via
+        # cli/errors.py.  blocked() is idempotent — a message that already
+        # carries the prefix (or a NEXT suffix from an audited raise site)
+        # passes through without doubling.  --json emits the machine
+        # envelope {ok, code, error, next} to stdout instead.
+        _emit_refusal(_blocked_line(str(e)), args.json)
         return 2
     except sqlite3.Error as e:
         # A8: db-level failures (locked database, integrity violations, a
         # foreign db) speak the same contract as the gates.
-        print(f"BLOCKED: database error: {e}", file=sys.stderr)
+        _emit_refusal(_blocked_line(f"database error: {e}"), args.json)
         return 2
     except OSError as e:
         # A8: report --out into a missing directory, unreadable files, ...
         # every user-input failure is a BLOCKED line, never a traceback.
-        print(f"BLOCKED: {e}", file=sys.stderr)
+        _emit_refusal(_blocked_line(str(e)), args.json)
         return 2
     finally:
         if conn is not None:

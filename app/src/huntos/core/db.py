@@ -66,7 +66,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from .models import ARTIFACT_TYPES, KLASS, PHASE_ARTIFACTS, PHASE_RANK, ROE_ACTIONS
+from .models import ARTIFACT_TYPES, KLASS, PHASE_ARTIFACTS, PHASE_RANK, PHASES, ROE_ACTIONS
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS targets (
@@ -746,7 +746,10 @@ def list_targets(conn: sqlite3.Connection) -> list:
 def score_target(conn: sqlite3.Connection, target_id: int, ev_score: float) -> None:
     row = get_target(conn, target_id)
     if row["phase"] not in ("scoring",):
-        raise ValueError(f"target {target_id} already past scoring phase (phase={row['phase']})")
+        raise ValueError(
+            f"BLOCKED: target {target_id} already past scoring phase (phase={row['phase']}) "
+            f"| NEXT: hunt next --target {target_id}"
+        )
     # NaN/inf would poison the row (sqlite binds NaN as NULL) and brick status.
     if not math.isfinite(ev_score):
         raise ValueError("BLOCKED: ev_score must be a finite number > 0")
@@ -795,22 +798,28 @@ def set_phase(conn: sqlite3.Connection, target_id: int, new_phase: str) -> None:
         raise ValueError("use archive_target() for archived")
     # pipeline order enforcement: forward-only, no skipping
     if PHASE_RANK[new_phase] != PHASE_RANK[old] + 1:
-        raise ValueError(f"phase skip blocked: {old} -> {new_phase} not next in pipeline")
+        nxt = PHASES[PHASE_RANK[old] + 1] if PHASE_RANK[old] + 1 < len(PHASES) else new_phase
+        raise ValueError(
+            f"BLOCKED: phase skip blocked: {old} -> {new_phase} not next in pipeline "
+            f"| NEXT: hunt phase {target_id} {nxt}"
+        )
     # phase exit gates: the phase being LEFT must have produced its evidence
     if old == "scoring" and row["ev_score"] <= 0:
         raise ValueError(
             "BLOCKED: target cannot leave scoring without a positive ev_score — "
-            "score it first (hunt score <id> <score>)"
+            f"score it first | NEXT: hunt score {target_id} <ev>"
         )
     if old == "recon" and not _has_artifact(conn, target_id, "surface_map"):
         raise ValueError(
             "BLOCKED: cannot leave recon without a surface_map artifact — "
-            f"hunt artifact {target_id} surface_map <file>"
+            f"hunt artifact {target_id} surface_map <file> "
+            f"| NEXT: hunt artifact {target_id} surface_map <file>"
         )
     if old == "classify" and not _has_artifact(conn, target_id, "attack_plan"):
         raise ValueError(
             "BLOCKED: cannot leave classify without an attack_plan artifact — "
-            f"hunt artifact {target_id} attack_plan <file>"
+            f"hunt artifact {target_id} attack_plan <file> "
+            f"| NEXT: hunt artifact {target_id} attack_plan <file>"
         )
     if old == "hunting":
         last = conn.execute(
@@ -821,7 +830,8 @@ def set_phase(conn: sqlite3.Connection, target_id: int, new_phase: str) -> None:
             variant = "without a single closed wave" if last is None else "without a closed wave"
             raise ValueError(
                 f"BLOCKED: cannot leave hunting {variant} — "
-                "close the wave first (hunt wave close --wave-id N --verdict ...)"
+                "close the wave first "
+                f"| NEXT: hunt next --target {target_id}"
             )
     if old == "verify":
         in_code = conn.execute(
@@ -831,12 +841,14 @@ def set_phase(conn: sqlite3.Connection, target_id: int, new_phase: str) -> None:
         if in_code:
             raise ValueError(
                 f"BLOCKED: cannot leave verify with {in_code} in-code findings — "
-                "promote, overturn, or deliberately leave each finding theoretical"
+                "promote, overturn, or deliberately leave each finding theoretical "
+                f"| NEXT: hunt next --target {target_id}"
             )
     if old == "report" and not _has_artifact(conn, target_id, "disclosure_report"):
         raise ValueError(
             "BLOCKED: cannot leave report without a disclosure_report artifact — "
-            f"hunt artifact {target_id} disclosure_report <file>"
+            f"hunt artifact {target_id} disclosure_report <file> "
+            f"| NEXT: hunt artifact {target_id} disclosure_report <file>"
         )
     conn.execute("UPDATE targets SET phase=? WHERE id=?", (new_phase, target_id))
     log_event(conn, target_id, "phase", f"{old} -> {new_phase}")
@@ -990,7 +1002,8 @@ def promote_finding(conn: sqlite3.Connection, finding_id: int, evidence_ref: str
     if ran is None:
         raise ValueError(
             "BLOCKED: this PoC has never been executed — "
-            f"hunt poc run --id {finding_id} --poc-path <file> (existence is not execution)"
+            f"hunt poc run --id {finding_id} --poc-path <file> (existence is not execution) "
+            f"| NEXT: hunt poc run --id {finding_id} --poc-path <file>"
         )
     if status == "theoretical":
         new_status = "in-code"
@@ -2147,7 +2160,8 @@ def open_wave(conn: sqlite3.Connection, target_id: int, lanes: str) -> int:
     if t["phase"] not in ("hunting", "verify"):
         raise ValueError(
             "BLOCKED: findings/waves belong to the hunting or verify phase "
-            f"(current phase: {t['phase']})"
+            f"(current phase: {t['phase']}) "
+            f"| NEXT: hunt next --target {target_id}"
         )
     last = conn.execute(
         "SELECT * FROM waves WHERE target_id=? ORDER BY number DESC LIMIT 1", (target_id,)
@@ -2157,12 +2171,13 @@ def open_wave(conn: sqlite3.Connection, target_id: int, lanes: str) -> int:
         if not last["ev_verdict"]:
             raise ValueError(
                 f"BLOCKED: wave {last['number']} has no ev_verdict (continue/exhausted/pivot). "
-                "Close the wave first."
+                f"Close the wave first. | NEXT: hunt wave close --wave-id {last['id']} --verdict exhausted"
             )
         if not last["reaudit_done"]:
             raise ValueError(
                 f"BLOCKED: wave {last['number']} has no re-audit recorded. "
-                "Re-audit previous wave claims (confirmed/overturned) before opening a new wave."
+                "Re-audit previous wave claims (confirmed/overturned) before opening a new wave. "
+                f"| NEXT: hunt wave reaudit --wave-id {last['id']} --summary \"confirmed <what>, overturned <what>, why\""
             )
         next_number = last["number"] + 1
     cur = conn.execute(

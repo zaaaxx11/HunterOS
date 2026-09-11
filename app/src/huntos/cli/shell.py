@@ -29,6 +29,18 @@ from typing import Callable, Sequence
 
 from .terminal import strip_ansi
 
+# Unified refusal shape (Phase 3, cli/errors.py): BLOCKED: <what> | NEXT:
+# <exact cmd>.  Import-light (stdlib re only), so the shell keeps its
+# no-DB-import startup contract; the fallback preserves the bare prefix.
+try:
+    from .errors import blocked as _blocked_line
+except ImportError:  # pragma: no cover - errors is shipped; fallback only
+    def _blocked_line(what, next_cmd=None):  # type: ignore[misc]
+        text = str(what)
+        if not text.startswith("BLOCKED:"):
+            text = f"BLOCKED: {text}"
+        return f"{text} | NEXT: {next_cmd}" if next_cmd else text
+
 # Identity prompt reads the single-source context resolver (cli/context.py):
 # current target + phase + open wave + latest conductor session, resolved via
 # read-only queries that never create or write the db.  The resolver is
@@ -654,8 +666,8 @@ class HuntShell(cmd.Cmd):
             self.stdout.write(f"macro stopped: {_display_argv(argv)} exited {rc}\n")
         return rc
 
-    def _blocked(self, message: str) -> int:
-        text = message if message.startswith("BLOCKED:") else f"BLOCKED: {message}"
+    def _blocked(self, message: str, next_cmd: str | None = None) -> int:
+        text = _blocked_line(message, next_cmd)
         print(text, file=sys.stderr)
         self.last_rc = 2
         self.last_output = text + "\n"
@@ -728,9 +740,7 @@ def _run_harness_preflight(name: str = "mock") -> bool:
             print("^C — guided hunt cancelled", file=sys.stderr)
         else:
             message = str(exc) or "harness preflight failed"
-            if not message.startswith("BLOCKED:"):
-                message = f"BLOCKED: {message}"
-            print(message, file=sys.stderr)
+            print(_blocked_line(message), file=sys.stderr)
         return False
     return True
 
