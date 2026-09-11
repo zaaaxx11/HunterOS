@@ -29,56 +29,85 @@ from typing import Callable, Sequence
 
 from .terminal import strip_ansi
 
+# Identity prompt reads the single-source context resolver (cli/context.py):
+# current target + phase + open wave + latest conductor session, resolved via
+# read-only queries that never create or write the db.  The resolver is
+# stdlib-only (sqlite3/os), so importing it cannot pull in the database
+# kernel; the fallback keeps the bare prompt when it is unavailable.
+try:
+    from .context import format_context_line, format_prompt, resolve_context
+except ImportError:  # pragma: no cover - context is shipped; fallback only
+    def resolve_context(db_path=None):  # type: ignore[misc]
+        return {"target_id": None}
+
+    def format_prompt(ctx) -> str:  # type: ignore[misc]
+        return "hunt> "
+
+    def format_context_line(ctx) -> str:  # type: ignore[misc]
+        return "(no target in context)"
+
 
 MACROS = ("firstblood", "wave", "report")
 
-# Keep this explicit: completion and help must not import the argparse module
-# (which imports the database kernel) merely to discover its verbs.
-HUNT_VERBS = (
-    "target",
-    "score",
-    "phase",
-    "finding",
-    "poc",
-    "verify",
-    "challenge",
-    "artifact",
-    "wave",
-    "report",
-    "verify-report",
-    "project",
-    "lesson",
-    "klass",
-    "brief",
-    "next",
-    "lead",
-    "oracle",
-    "surface",
-    "coverage",
-    "chain",
-    "fuzz",
-    "status",
-    "install",
-    "doctor",
-    "adapter",
-    "run",
-    "shell",
-)
+# Verb/action discovery reads the single-source registry (cli/registry.py) so
+# completion and help can never drift from the argparse parser.  The literal
+# fallback preserves the no-DB-import startup contract when the registry is
+# unavailable: completion and help must not import the database kernel merely
+# to discover verbs.
+try:
+    from .registry import GROUP_ACTIONS as _REGISTRY_ACTIONS
+    from .registry import VERBS as _REGISTRY_VERBS
 
-_GROUP_ACTIONS = {
-    "target": ("prepare", "add", "list", "roe", "archive"),
-    "adapter": ("add", "list", "doctor", "remove"),
-    "finding": ("add", "promote", "overturn", "retitle"),
-    "poc": ("run",),
-    "wave": ("open", "close", "reaudit"),
-    "project": ("bind", "status"),
-    "lesson": ("add", "list", "reword"),
-    "klass": ("list", "add"),
-    "lead": ("add", "set-half", "mutate", "set", "next", "park", "reopen", "kill", "promote", "list"),
-    "surface": ("add", "list"),
-    "chain": ("add", "link", "show", "novelty"),
-    "run": ("start", "status", "pause", "resume", "abort", "retry", "reconcile"),
-}
+    HUNT_VERBS: tuple[str, ...] = _REGISTRY_VERBS
+    _GROUP_ACTIONS: dict[str, tuple[str, ...]] = dict(_REGISTRY_ACTIONS)
+except ImportError:  # pragma: no cover - registry is shipped; fallback only
+    HUNT_VERBS = (
+        "target",
+        "score",
+        "phase",
+        "finding",
+        "poc",
+        "verify",
+        "challenge",
+        "artifact",
+        "wave",
+        "report",
+        "verify-report",
+        "project",
+        "lesson",
+        "klass",
+        "brief",
+        "next",
+        "lead",
+        "oracle",
+        "surface",
+        "coverage",
+        "chain",
+        "fuzz",
+        "status",
+        "install",
+        "harness",
+        "doctor",
+        "adapter",
+        "run",
+        "shell",
+        "help",
+    )
+
+    _GROUP_ACTIONS = {
+        "target": ("prepare", "add", "list", "roe", "archive"),
+        "adapter": ("add", "list", "doctor", "remove"),
+        "finding": ("add", "promote", "overturn", "retitle"),
+        "poc": ("run",),
+        "wave": ("open", "close", "reaudit"),
+        "project": ("bind", "status"),
+        "lesson": ("add", "list", "reword"),
+        "klass": ("list", "add"),
+        "lead": ("add", "set-half", "mutate", "set", "next", "park", "reopen", "kill", "promote", "list"),
+        "surface": ("add", "list"),
+        "chain": ("add", "link", "show", "novelty"),
+        "run": ("start", "status", "pause", "resume", "abort", "retry", "reconcile"),
+    }
 
 _BANNER = (
     "HUNT-OS shell — the same CLI gate and the same BLOCKED exit 2.\n"
@@ -175,6 +204,21 @@ class HuntShell(cmd.Cmd):
         history_root = Path(hunt_home).expanduser() if hunt_home else Path.home() / ".huntos"
         self._history_path = history_root / "shell_history"
         self._setup_readline()
+        self.refresh_prompt()
+
+    # --- identity: where am I ---------------------------------------------
+
+    def refresh_prompt(self) -> str:
+        """Re-resolve context (read-only) and set the identity prompt.
+
+        Called once at startup and after every command via postcmd: the
+        prompt always names the current target + phase (``hunt t1:scoring``)
+        with an optional session suffix, or falls back to the bare
+        ``hunt> `` when the ledger is empty or ambiguous.  No background
+        thread — one bounded read per command, unknown-safe.
+        """
+        self.prompt = format_prompt(resolve_context())
+        return self.prompt
 
     # --- command dispatch -------------------------------------------------
 
@@ -188,8 +232,11 @@ class HuntShell(cmd.Cmd):
         ``cmd.Cmd`` normally treats any truthy command result as a request to
         exit.  Hunt handlers return exit code 2 for a refusal, so forwarding
         that value directly would turn an ordinary BLOCKED gate into an
-        accidental shell exit.
+        accidental shell exit.  Every command also refreshes the identity
+        prompt (read-only context re-resolve), so the prompt always names
+        the current target + phase.
         """
+        self.refresh_prompt()
         command = line.strip().split(maxsplit=1)[0] if line.strip() else ""
         return bool(stop) and command in {"quit", "exit", "EOF"}
 
@@ -307,10 +354,16 @@ class HuntShell(cmd.Cmd):
     # --- shell built-ins --------------------------------------------------
 
     def do_help(self, arg: str):
-        """Show shell help, or run ``hunt <verb> --help``."""
+        """Show grouped command help, or run ``hunt <verb> --help``."""
         arg = arg.strip()
         if not arg:
             self.stdout.write(_BANNER)
+            try:
+                from .registry import grouped_help
+
+                self.stdout.write(grouped_help() + "\n")
+            except ImportError:  # pragma: no cover - registry fallback
+                self.stdout.write("commands: " + " ".join(HUNT_VERBS) + "\n")
             self.stdout.write("macros: firstblood, wave, report\n")
             return 0
         try:
@@ -335,6 +388,16 @@ class HuntShell(cmd.Cmd):
             return 0
         self.stdout.write(f"rc {self.last_rc}: {' '.join(self.last_argv)}\n")
         return self.last_rc
+
+    def do_context(self, _arg: str):
+        """Show where you are: target + phase + open wave + session."""
+        self.stdout.write(format_context_line(resolve_context()) + "\n")
+        return 0
+
+    def do_refresh(self, _arg: str):
+        """Re-resolve context now and show the new prompt line."""
+        self.stdout.write(self.refresh_prompt() + "\n")
+        return 0
 
     def do_quit(self, _arg: str):
         """Leave the hunt shell."""

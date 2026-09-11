@@ -142,6 +142,8 @@ Commands:
                                              # (a NEW attempt id; never a recycled one)
   hunt run reconcile --attempt A --resolution "..."
                                              # resolve the incident on an uncertain attempt
+  hunt help [verb]                           # grouped command help (no db needed);
+                                             # with a verb: examples + the NEXT hint
 
 Claim discipline (enforced by huntos/_data/bin/claim_gate.py, which vetoes engine output):
 every strong claim (PROVEN / EXPLOITABLE / "admin takeover") must name its finding —
@@ -175,7 +177,7 @@ SURFACE_KINDS = db.SURFACE_KINDS
 # Read-only commands run even when the workspace lock mismatches (hard warning
 # instead of BLOCKED) — inspecting state must not require rebinding first.
 # Simple command names (nothing but reads behind them):
-READ_ONLY_COMMANDS = ("verify-report", "status", "brief", "next", "doctor", "coverage")
+READ_ONLY_COMMANDS = ("verify-report", "status", "brief", "next", "doctor", "coverage", "help")
 # Groups that MIX reads and writes: the ACTION decides, not the command name —
 # `hunt target add` / `hunt klass add` / `hunt run start` stay lock-blocked
 # while their `list` / `show` / `novelty` / `status` actions pass with a warning.
@@ -197,7 +199,7 @@ READ_ONLY_ACTIONS = {
 # a doctor FAIL, not the global BLOCKED exit). `shell` holds/opens no db itself:
 # every entered line returns through main(), preserving the same connection
 # lifecycle and workspace-gate path as the ordinary CLI.
-NO_DB_COMMANDS = ("install", "doctor", "adapter", "harness", "shell")
+NO_DB_COMMANDS = ("install", "doctor", "adapter", "harness", "shell", "help")
 
 # The package's shipped data root, resolved from this file
 # (<package>/huntos/_data). `hunt install` delegates to the in-package
@@ -1113,6 +1115,35 @@ def cmd_install(args, conn=None) -> int:
         return code if isinstance(code, int) else 1
 
 
+def cmd_help(args, conn) -> int:
+    """`hunt help [verb]`: grouped command help, or per-verb examples.
+
+    Read-only and db-free: help must work on a bare machine with no hunt db
+    (the first thing a fresh install reaches for).  Bare `hunt help` prints
+    the registry's grouped verb list; `hunt help <verb>` prints that verb's
+    short help, copy-pasteable examples, and its NEXT hint.  An unknown verb
+    is a BLOCKED ValueError (exit 2), matching the unknown-adapter contract.
+    """
+    from .registry import COMMAND_REGISTRY, grouped_help
+
+    if not args.verb:
+        print(grouped_help())
+        print("macros (inside hunt shell): firstblood, wave, report")
+        print("details: hunt help <verb> | hunt <verb> --help")
+        return 0
+    meta = COMMAND_REGISTRY.get(args.verb)
+    if meta is None:
+        raise ValueError(
+            f"BLOCKED: unknown command {args.verb!r} — try 'hunt help'"
+        )
+    actions = f" ({'/'.join(meta['actions'])})" if meta["actions"] else ""
+    print(f"{args.verb}{actions} — {meta['help']}")
+    for example in meta["examples"]:
+        print(f"  e.g. {example}")
+    print(f"  next: {meta['next_hint']}")
+    return 0
+
+
 def cmd_shell(args, conn) -> int:
     # conn is always None; lazy import avoids a cycle while each line re-enters main().
     from .shell import run_shell
@@ -1537,6 +1568,14 @@ def main(argv=None) -> int:
     supplied_argv = list(sys.argv[1:] if argv is None else argv)
     bare = not supplied_argv
     p = argparse.ArgumentParser(prog="hunt", description="HUNT-OS - hunt framework state machine")
+    # Identity flag (Phase 2): `hunt --show-context <verb> ...` prints the
+    # same where-am-I line the shell prompt shows (target + phase + open
+    # wave + session) to stderr before running the verb.  Read-only and
+    # db-safe: the resolver opens the ledger mode=ro and never creates it.
+    p.add_argument(
+        "--show-context", action="store_true",
+        help="print the current target/phase/wave/session line to stderr, then run",
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
     pt = sub.add_parser("target", help="manage targets: add / list / roe / archive")
@@ -2060,6 +2099,16 @@ def main(argv=None) -> int:
     )
     pshell.set_defaults(fn=cmd_shell)
 
+    phelp = sub.add_parser(
+        "help",
+        help="grouped command help, or per-verb examples: hunt help [verb]",
+    )
+    phelp.add_argument(
+        "verb", nargs="?", default=None,
+        help="show examples and the NEXT hint for one command",
+    )
+    phelp.set_defaults(fn=cmd_help)
+
     prun = sub.add_parser("run", help="the conductor: start / status / pause / resume / "
                                       "abort / retry / reconcile")
     prun_sub = prun.add_subparsers(dest="action", required=True)
@@ -2116,6 +2165,13 @@ def main(argv=None) -> int:
             p.print_help()
             return 2
     args = p.parse_args(supplied_argv)
+    if args.show_context:
+        # Identity line (Phase 2): the same where-am-I the shell prompt
+        # shows.  Emitted to stderr so stdout stays machine-clean; the
+        # resolver never writes and never creates a missing db.
+        from .context import format_context_line, resolve_context
+
+        print(format_context_line(resolve_context()), file=sys.stderr)
     # L3: `install`, `doctor`, and `shell` skip the eager db-open/lock path.
     # install must not create a db as a side effect; doctor's checklist owns
     # its own db handling (a corrupt db is a FAIL line, not a global BLOCKED).
