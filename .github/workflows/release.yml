@@ -145,7 +145,7 @@ jobs:
               for path in assets
           ]
           manifest = dist / "SHA256SUMS"
-          manifest.write_text("\n".join(lines) + "\n")
+          manifest.write_text("\n".join(lines) + "\n", newline="\n")
 
           entries = {line.split(None, 1)[1] for line in lines}
           if entries != asset_names:

@@ -168,6 +168,7 @@ WHEEL_NAME="$(awk '
   {
     name=$2
     sub(/^\*/, "", name)
+    sub(/\r$/, "", name)
     if (name ~ /^huntos-[^-\/[:space:]]+-[^\/[:space:]]+\.whl$/) {
       print name
       exit
@@ -180,7 +181,7 @@ if [ -z "$WHEEL_NAME" ]; then
 fi
 
 EXPECTED="$(awk -v name="$WHEEL_NAME" \
-  '$2 == name || $2 == ("*" name) { print $1; exit }' \
+  '{ h=$1; n=$2; sub(/^\*/, "", n); sub(/\r$/, "", n); sub(/\r$/, "", h); if (n == name) { print h; exit } }' \
   "${TMP}/SHA256SUMS")"
 case "$EXPECTED" in
   ''|*[!0-9A-Fa-f]*)
