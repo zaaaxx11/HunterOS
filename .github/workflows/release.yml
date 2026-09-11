@@ -1,0 +1,174 @@
+# HUNT-OS release pipeline: build wheel + sdist, bundle the idea pack, ship
+# installers with a sha256 manifest on the GitHub Release for each `v*` tag.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      REPO_URL: https://github.com/zaaaxx11/Hunter
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tooling
+        run: python3 -m pip install --upgrade pip build
+
+      - name: Build wheel and sdist from ./app
+        run: python3 -m build ./app --outdir ./dist
+
+      - name: Validate canonical wheel artifact
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import tomllib
+
+          dist = pathlib.Path("dist")
+          wheels = sorted(dist.glob("huntos-*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"expected exactly one canonical huntos wheel, found: {wheels}")
+          project = tomllib.loads(pathlib.Path("app/pyproject.toml").read_text())
+          version = project["project"]["version"]
+          expected = f"huntos-{version}-py3-none-any.whl"
+          if wheels[0].name != expected:
+              raise SystemExit(
+                  f"unexpected wheel filename {wheels[0].name!r}; expected {expected!r}"
+              )
+
+          tag_version = os.environ["RELEASE_TAG"].removeprefix("v")
+          if tag_version != version:
+              raise SystemExit(
+                  f"release tag version {tag_version!r} does not match project version {version!r}"
+              )
+          print(f"canonical wheel: {wheels[0].name}")
+          PY
+
+      - name: Smoke-test fresh wheel and sdist installs
+        run: |
+          set -euo pipefail
+          for artifact in dist/*.whl dist/*.tar.gz; do
+            envdir="$(mktemp -d)"
+            python3 -m venv "$envdir"
+            "$envdir/bin/python" -m pip install --quiet --no-deps "$artifact"
+            smoke="$(mktemp -d)"
+            (
+              cd "$smoke"
+              export HUNT_DB="$smoke/hunt.db"
+              "$envdir/bin/hunt" --help >/dev/null
+              "$envdir/bin/python" -m huntos --help >/dev/null
+              "$envdir/bin/hunt" target list >/dev/null
+              test -f "$smoke/hunt.db"
+            )
+            echo "release artifact smoke OK: $(basename "$artifact")"
+          done
+
+      - name: Package the public idea layer
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          ZIP="dist/hunt-os-idea-${VER}.zip"
+          python3 - "$ZIP" <<'PY'
+          import pathlib, sys, zipfile
+          src = pathlib.Path("app/src/huntos/_data")
+          out = sys.argv[1]
+          # Keep this allowlist aligned with MANIFEST.in and pyproject.toml.
+          roots = [
+              src / "idea" / "IDEA.md",
+              src / "idea" / "HUNT-BRIDGE.md",
+              src / "idea" / "skills" / "INDEX.md",
+              src / "idea" / "skills" / "README.md",
+              *(src / "idea" / "skills" / category for category in
+                ("cdc", "recon", "verification", "web2", "web3")),
+              src / "roles",
+              src / "hooks",
+              src / "bin",
+          ]
+          prefix = "hunt-os-idea/"
+          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+              for root in roots:
+                  paths = [root] if root.is_file() else sorted(root.rglob("*"))
+                  for p in paths:
+                      if (not p.is_file() or p.suffix in {".pyc", ".tmpcheck"}
+                              or "__pycache__" in p.parts
+                              or ".pytest_cache" in p.parts):
+                          continue
+                      z.write(p, prefix + p.relative_to(src).as_posix())
+          PY
+
+      - name: Stage release assets
+        run: |
+          set -euo pipefail
+          cp install.sh install.ps1 dist/
+          for asset in install.py install-core.py; do
+            if [ -f "$asset" ]; then
+              cp "$asset" dist/
+            fi
+          done
+
+      - name: Write and validate SHA256SUMS
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import pathlib
+
+          dist = pathlib.Path("dist")
+          assets = sorted(
+              path for path in dist.iterdir()
+              if path.is_file() and path.name != "SHA256SUMS"
+          )
+          wheels = [path for path in assets if path.name.startswith("huntos-") and path.suffix == ".whl"]
+          if len(wheels) != 1:
+              raise SystemExit(f"expected exactly one canonical huntos wheel, found: {wheels}")
+          asset_names = {path.name for path in assets}
+          required = {wheels[0].name, "install.sh", "install.ps1"}
+          if not required <= asset_names:
+              raise SystemExit(f"missing required release asset: {sorted(required - asset_names)}")
+
+          lines = [
+              f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}"
+              for path in assets
+          ]
+          manifest = dist / "SHA256SUMS"
+          manifest.write_text("\n".join(lines) + "\n")
+
+          entries = {line.split(None, 1)[1] for line in lines}
+          if entries != asset_names:
+              raise SystemExit(
+                  f"SHA256SUMS entries do not match release assets: {sorted(entries)}"
+              )
+          if not required <= entries:
+              raise SystemExit(f"SHA256SUMS is missing required entries: {sorted(required - entries)}")
+          print(manifest.read_text(), end="")
+          PY
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # NOTE: --generate-notes and --notes are mutually exclusive in gh;
+          # using both fails the job (which leaves latest/download 404).
+          # Idempotent: retagging (git tag -f + push -f) must not fail when
+          # the Release already exists — upload/clobber instead.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "$TAG" --latest \
+              --notes "Built and maintained by Mafaza Bagas — https://github.com/zaaaxx11/Hunter"
+          fi

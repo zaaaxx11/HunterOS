@@ -1,0 +1,916 @@
+model:
+  default: DeepSeek-V4-Pro
+  provider: hcnsec
+providers:
+  ainative:
+    name: ainative
+    base_url: https://api.ainative.studio/v1
+    api_key: <REDACTED-API-KEY>
+    api_mode: openai_chat
+    model: deepseek-v3.2
+    models:
+      deepseek-v3.2: {}
+    default_model: deepseek-v3.2
+  hcnsec:
+    name: hcnsec
+    base_url: https://api.hcnsec.cn/v1
+    api_key: <REDACTED-API-KEY>
+    api_mode: openai_chat
+    model: DeepSeek-V4-Pro
+    models:
+      DeepSeek-V4-Flash: {}
+      DeepSeek-V4-Pro: {}
+      glm-4.7: {}
+      glm-5.2: {}
+      Kimi-K2.6: {}
+      MiniMax-M2.7: {}
+      MiniMax-M3: {}
+      Qwen3-Coder-Next-FP8: {}
+      Qwen3.6-35B-A3B: {}
+      Spark-X2-Flash: {}
+      step-3.7-flash: {}
+  dashscope-intl:
+    name: dashscope-intl
+    base_url: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+    api_key: <REDACTED-API-KEY>
+    api_mode: openai_chat
+    default_model: qwen3.7-flash
+    model: qwen3.7-flash
+    models:
+      deepseek-v3.2: {}
+      deepseek-v4-flash: {}
+      deepseek-v4-pro: {}
+      glm-5.1: {}
+      glm-5.2: {}
+      glm-5.2-fast-preview: {}
+      kimi-k2.7-code: {}
+      qvq-max: {}
+      qwen-coder-plus: {}
+      qwen-flash: {}
+      qwen-max: {}
+      qwen-plus: {}
+      qwen-plus-2025-01-25: {}
+      qwen-plus-2025-04-28: {}
+      qwen-plus-2025-07-14: {}
+      qwen-plus-2025-09-11: {}
+      qwen-plus-2025-12-01: {}
+      qwen-plus-latest: {}
+      qwen-turbo: {}
+      qwen-vl-max: {}
+      qwen-vl-plus: {}
+      qwen2-7b-instruct: {}
+      qwen3-14b: {}
+      qwen3-235b-a22b: {}
+      qwen3-235b-a22b-instruct-2507: {}
+      qwen3-235b-a22b-thinking-2507: {}
+      qwen3-30b-a3b: {}
+      qwen3-30b-a3b-instruct-2507: {}
+      qwen3-30b-a3b-thinking-2507: {}
+      qwen3-32b: {}
+      qwen3-8b: {}
+      qwen3-coder-480b-a35b-instruct: {}
+      qwen3-coder-flash: {}
+      qwen3-coder-next: {}
+      qwen3-coder-plus: {}
+      qwen3-coder-plus-2025-07-22: {}
+      qwen3-coder-plus-2025-09-23: {}
+      qwen3-max: {}
+      qwen3-max-2025-09-23: {}
+      qwen3-max-2026-01-23: {}
+      qwen3-max-preview: {}
+      qwen3-next-80b-a3b-instruct: {}
+      qwen3-next-80b-a3b-thinking: {}
+      qwen3-s2s-flash-realtime: {}
+      qwen3-vl-235b-a22b-instruct: {}
+      qwen3-vl-235b-a22b-thinking: {}
+      qwen3-vl-flash: {}
+      qwen3-vl-flash-2025-10-15: {}
+      qwen3-vl-flash-2026-01-22: {}
+      qwen3-vl-plus: {}
+      qwen3-vl-plus-2025-09-23: {}
+      qwen3-vl-plus-2025-12-19: {}
+      qwen3.5-122b-a10b: {}
+      qwen3.5-27b: {}
+      qwen3.5-35b-a3b: {}
+      qwen3.5-397b-a17b: {}
+      qwen3.5-flash: {}
+      qwen3.5-flash-2026-02-23: {}
+      qwen3.5-plus: {}
+      qwen3.5-plus-2026-02-15: {}
+      qwen3.5-plus-2026-04-20: {}
+      qwen3.6-27b: {}
+      qwen3.6-35b-a3b: {}
+      qwen3.6-flash: {}
+      qwen3.6-flash-2026-04-16: {}
+      qwen3.6-max-preview: {}
+      qwen3.6-plus: {}
+      qwen3.6-plus-2026-04-02: {}
+      qwen3.7-flash: {}
+      qwen3.7-flash-2026-07-15: {}
+      qwen3.7-max: {}
+      qwen3.7-max-2026-05-17: {}
+      qwen3.7-max-2026-05-20: {}
+      qwen3.7-max-2026-06-08: {}
+      qwen3.7-max-preview: {}
+      qwen3.7-plus: {}
+      qwen3.7-plus-2026-05-26: {}
+      qwq-plus: {}
+      qwq-plus-2025-03-05: {}
+      text-embedding-v3: {}
+      text-embedding-v4: {}
+    request_timeout_seconds: 600
+    stale_timeout_seconds: 300
+  makora:
+    name: makora
+    base_url: https://inference.makora.com/v1
+    api_key: <REDACTED-API-KEY>
+    model: kimi-k3
+    api_mode: openai_chat
+    models:
+      kimi-k3:
+        hf_model: moonshotai/Kimi-K3
+        max_model_len: 1048576
+        input_modalities:
+          - text
+          - image
+        output_modalities:
+          - text
+        context_length: 1048576
+      kimi-k2.7-code:
+        hf_model: moonshotai/Kimi-K2.7-Code
+        max_model_len: 262144
+      deepseek-v4-flash:
+        hf_model: deepseek-ai/DeepSeek-V4-Flash
+        max_model_len: 1048576
+      deepseek-v4-pro:
+        hf_model: deepseek-ai/DeepSeek-V4-Pro
+        max_model_len: 1048576
+      glm-5.2-fp8:
+        hf_model: zai-org/GLM-5.2-FP8
+        max_model_len: 980000
+      glm-5.2-nvfp4:
+        hf_model: zai-org/GLM-5.2-NVFP4
+        max_model_len: 1048576
+    request_timeout_seconds: 600
+    stale_timeout_seconds: 300
+  mistral:
+    name: mistral
+    base_url: https://api.mistral.ai/v1
+    api_key: <REDACTED-API-KEY>
+    model: mistral-large-latest
+    api_mode: openai_chat
+    models:
+      mistral-large-latest: {}
+      mistral-medium: {}
+      mistral-small-latest: {}
+      codestral-latest: {}
+      ministral-3b: {}
+      ministral-8b: {}
+      mistral-embed: {}
+    request_timeout_seconds: 600
+    stale_timeout_seconds: 300
+fallback_providers:
+  - model: mimo-v2.5-pro
+    provider: custom:tokenplan
+  - model: openai/gpt-5.5
+    provider: custom:freemodel
+  - model: openai/gpt-5.3-codex
+    provider: custom:freemodel
+  - model: openai/gpt-5.4
+    provider: custom:freemodel
+  - model: openai/gpt-5.4-mini
+    provider: custom:freemodel
+  - model: cx/gpt-5.5
+    provider: custom:9router
+  - model: cx/gpt-5.4
+    provider: custom:9router
+  - model: cl/openai/gpt-5.4
+    provider: custom:9router
+  - model: cx/gpt-5.2
+    provider: custom:9router
+  - model: cl/anthropic/claude-sonnet-4.6
+    provider: custom:9router
+toolsets:
+  - hermes-cli
+agent:
+  max_turns: 90
+  gateway_timeout: 1800
+  restart_drain_timeout: 180
+  api_max_retries: 5
+  service_tier: ''
+  tool_use_enforcement: auto
+  task_completion_guidance: true
+  environment_probe: true
+  environment_hint: ''
+  coding_context: auto
+  verify_on_stop: false
+  gateway_timeout_warning: 900
+  clarify_timeout: 600
+  gateway_notify_interval: 180
+  gateway_auto_continue_freshness: 3600
+  image_input_mode: auto
+  disabled_toolsets: []
+terminal:
+  backend: local
+  modal_mode: auto
+  cwd: .
+  timeout: 180
+  env_passthrough: []
+  home_mode: auto
+  shell_init_files: []
+  auto_source_bashrc: true
+  docker_image: nikolaik/python-nodejs:python3.11-nodejs20
+  docker_forward_env: []
+  singularity_image: docker://nikolaik/python-nodejs:python3.11-nodejs20
+  modal_image: nikolaik/python-nodejs:python3.11-nodejs20
+  daytona_image: nikolaik/python-nodejs:python3.11-nodejs20
+  container_cpu: 1
+  container_memory: 5120
+  container_disk: 51200
+  container_persistent: true
+  docker_volumes: []
+  docker_mount_cwd_to_workspace: false
+  docker_extra_args: []
+  docker_run_as_host_user: false
+  persistent_shell: true
+  vercel_runtime: node24
+web:
+  backend: ''
+  search_backend: ''
+  extract_backend: ''
+browser:
+  inactivity_timeout: 120
+  command_timeout: 30
+  record_sessions: false
+  allow_private_urls: false
+  engine: auto
+  auto_local_for_private_urls: true
+  cdp_url: ''
+  dialog_policy: must_respond
+  dialog_timeout_s: 300
+  camofox:
+    managed_persistence: false
+    user_id: ''
+    session_key: ''
+    adopt_existing_tab: false
+    rewrite_loopback_urls: false
+    loopback_host_alias: host.docker.internal
+checkpoints:
+  enabled: false
+  max_snapshots: 20
+  max_total_size_mb: 500
+  max_file_size_mb: 10
+  auto_prune: true
+  retention_days: 7
+  delete_orphans: true
+  min_interval_hours: 24
+file_read_max_chars: 100000
+tool_output:
+  max_bytes: 50000
+  max_lines: 2000
+  max_line_length: 2000
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: false
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2
+  hard_stop_after:
+    exact_failure: 5
+    same_tool_failure: 8
+    idempotent_no_progress: 5
+compression:
+  enabled: true
+  threshold: 0.5
+  target_ratio: 0.2
+  protect_last_n: 20
+  hygiene_hard_message_limit: 400
+  protect_first_n: 3
+  abort_on_summary_failure: false
+  codex_gpt55_autoraise: true
+kanban:
+  dispatch_in_gateway: true
+  dispatch_interval_seconds: 60
+  failure_limit: 2
+  worker_log_rotate_bytes: 2097152
+  worker_log_backup_count: 1
+  orchestrator_profile: ''
+  default_assignee: ''
+  auto_decompose: true
+  auto_decompose_per_tick: 3
+  dispatch_stale_timeout_seconds: 14400
+prompt_caching:
+  cache_ttl: 5m
+openrouter:
+  response_cache: true
+  response_cache_ttl: 300
+  min_coding_score: 0.65
+bedrock:
+  region: ''
+  discovery:
+    enabled: true
+    provider_filter: []
+    refresh_interval: 3600
+  guardrail:
+    guardrail_identifier: ''
+    guardrail_version: ''
+    stream_processing_mode: async
+    trace: disabled
+auxiliary:
+  vision:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 120
+    download_timeout: 30
+  web_extract:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 360
+  compression:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 120
+  skills_hub:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 30
+  approval:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 30
+  mcp:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 30
+  title_generation:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 30
+  tts_audio_tags:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 30
+  triage_specifier:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 120
+  kanban_decomposer:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 180
+  profile_describer:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 60
+  curator:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 600
+  monitor:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 60
+  session_search:
+    api_key: ''
+    base_url: ''
+    extra_body: {}
+    max_concurrency: 3
+    model: ''
+    provider: auto
+    timeout: 30
+display:
+  compact: false
+  personality: kawaii
+  resume_display: full
+  resume_exchanges: 10
+  resume_max_user_chars: 300
+  resume_max_assistant_chars: 200
+  resume_max_assistant_lines: 3
+  resume_skip_tool_only: true
+  busy_input_mode: interrupt
+  interface: cli
+  tui_auto_resume_recent: false
+  tui_agents_nudge: true
+  bell_on_complete: false
+  show_reasoning: false
+  streaming: false
+  timestamps: false
+  final_response_markdown: strip
+  persistent_output: true
+  persistent_output_max_lines: 200
+  persist_prompts: true
+  inline_diffs: true
+  file_mutation_verifier: true
+  credits_notices: true
+  turn_completion_explainer: true
+  show_cost: false
+  skin: default
+  language: en
+  tui_status_indicator: kaomoji
+  user_message_preview:
+    first_lines: 2
+    last_lines: 2
+  interim_assistant_messages: true
+  tool_progress_command: false
+  tool_preview_length: 0
+  ephemeral_system_ttl: 0
+  platforms:
+    telegram:
+      streaming: true
+    discord:
+      streaming: false
+  runtime_footer:
+    enabled: false
+    fields:
+      - model
+      - context_pct
+      - cwd
+  copy_shortcut: auto
+  reasoning: false
+dashboard:
+  theme: default
+  show_token_analytics: false
+  oauth:
+    client_id: ''
+    portal_url: ''
+  basic_auth:
+    username: ''
+    password_hash: ''
+    password: ''
+    secret: ''
+    session_ttl_seconds: 0
+  public_url: ''
+privacy:
+  redact_pii: false
+tts:
+  provider: edge
+  edge:
+    voice: en-US-AriaNeural
+  elevenlabs:
+    voice_id: pNInz6obpgDQGcFmaJgB
+    model_id: eleven_multilingual_v2
+  openai:
+    model: gpt-4o-mini-tts
+    voice: alloy
+  gemini:
+    model: gemini-2.5-flash-preview-tts
+    voice: Kore
+    audio_tags: false
+    persona_prompt_file: ''
+  xai:
+    voice_id: eve
+    language: en
+    sample_rate: 24000
+    bit_rate: 128000
+  mistral:
+    model: voxtral-mini-tts-2603
+    voice_id: c69964a6-ab8b-4f8a-9465-ec0925096ec8
+  neutts:
+    ref_audio: ''
+    ref_text: ''
+    model: neuphonic/neutts-air-q4-gguf
+    device: cpu
+  piper:
+    voice: en_US-lessac-medium
+stt:
+  enabled: true
+  provider: local
+  local:
+    model: base
+    language: ''
+  openai:
+    model: whisper-1
+  mistral:
+    model: voxtral-mini-latest
+  elevenlabs:
+    model_id: scribe_v2
+    language_code: ''
+    tag_audio_events: false
+    diarize: false
+voice:
+  record_key: ctrl+b
+  max_recording_seconds: 120
+  auto_tts: false
+  beep_enabled: true
+  silence_threshold: 200
+  silence_duration: 3.0
+human_delay:
+  mode: 'off'
+  min_ms: 800
+  max_ms: 2500
+context:
+  engine: compressor
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+  write_approval: false
+  memory_char_limit: 2200
+  user_char_limit: 1375
+  provider: ''
+delegation:
+  model: ''
+  provider: ''
+  base_url: ''
+  api_key: ''
+  api_mode: ''
+  inherit_mcp_toolsets: true
+  max_iterations: 50
+  child_timeout_seconds: 600
+  reasoning_effort: ''
+  max_concurrent_children: 3
+  max_spawn_depth: 2
+  orchestrator_enabled: true
+  subagent_auto_approve: false
+prefill_messages_file: ''
+goals:
+  max_turns: 20
+skills:
+  external_dirs: []
+  template_vars: true
+  inline_shell: false
+  inline_shell_timeout: 10
+  guard_agent_created: false
+  write_approval: false
+curator:
+  enabled: true
+  interval_hours: 168
+  min_idle_hours: 2
+  stale_after_days: 30
+  archive_after_days: 90
+  prune_builtins: true
+  backup:
+    enabled: true
+    keep: 5
+timezone: ''
+slack:
+  require_mention: true
+  free_response_channels: ''
+  allowed_channels: ''
+discord:
+  require_mention: true
+  free_response_channels: ''
+  allowed_channels: ''
+  auto_thread: true
+  thread_require_mention: false
+  history_backfill: true
+  history_backfill_limit: 50
+  reactions: true
+  dm_role_auth_guild: ''
+  server_actions: ''
+  allow_any_attachment: false
+  max_attachment_bytes: 33554432
+  voice_fx:
+    enabled: false
+    ambient_enabled: true
+    ambient_path: ''
+    ambient_gain: 0.18
+    duck_gain: 0.06
+    speech_gain: 1.0
+    ack_enabled: true
+    ack_phrases:
+      - Let me look into that.
+      - One moment.
+      - Checking on that now.
+      - Give me a sec.
+      - On it.
+telegram:
+  reactions: false
+  allowed_chats: ''
+  extra:
+    rich_messages: false
+  allowed_users: <redacted>
+  home_channel: <redacted>
+mattermost:
+  require_mention: true
+  free_response_channels: ''
+  allowed_channels: ''
+matrix:
+  require_mention: true
+  free_response_rooms: ''
+  allowed_rooms: ''
+approvals:
+  mode: manual
+  timeout: 60
+  cron_mode: deny
+  mcp_reload_confirm: true
+  destructive_slash_confirm: false
+command_allowlist:
+  - in-place edit of system config
+  - execute_code
+  - pipe remote content to shell
+  - git clean with force (deletes untracked files)
+  - world/other-writable permissions
+  - force kill processes
+  - recursive delete
+  - script execution via heredoc
+  - overwrite system config
+  - overwrite system file via tee
+  - chmod +x followed by immediate execution
+  - sudo with privilege flag (stdin/askpass/shell/list)
+  - kill hermes/gateway process (self-termination)
+  - shell command via -c/-lc flag
+  - stop/restart system service
+  - SQL DROP
+  - git reset --hard (destroys uncommitted changes)
+  - find -delete
+  - overwrite project env/config file
+  - script execution via -e/-c flag
+  - kill process via pgrep expansion (self-termination)
+  - in-place edit of Hermes config/env
+  - overwrite system file via redirection
+  - command parser limit or malformed executable payload
+  - delete in root path
+  - git force push (rewrites remote history)
+  - force kill processes (killall -KILL)
+  - sudo with combined-flag privilege escalation
+  - stop/restart hermes gateway (kills running agents)
+hooks_auto_accept: false
+security:
+  allow_private_urls: false
+  redact_secrets: false
+  tirith_enabled: true
+  tirith_path: tirith
+  tirith_timeout: 5
+  tirith_fail_open: true
+  website_blocklist:
+    enabled: false
+    domains: []
+    shared_files: []
+  acked_advisories: []
+  allow_lazy_installs: true
+cron:
+  wrap_response: true
+code_execution:
+  mode: project
+tools:
+  tool_search:
+    enabled: auto
+    threshold_pct: 10
+    search_default_limit: 5
+    max_search_limit: 20
+  browser:
+    download_timeout: 30
+    timeout: 120
+  cronjob:
+    timeout: 30
+  delegate_task:
+    timeout: 120
+  execute_code:
+    timeout: 600
+  file:
+    timeout: 360
+  search:
+    timeout: 120
+  send_message:
+    timeout: 30
+  session_search:
+    timeout: 30
+  terminal:
+    timeout: 180
+  vision:
+    timeout: 30
+logging:
+  level: INFO
+  max_size_mb: 5
+  backup_count: 3
+model_catalog:
+  enabled: true
+  url: https://hermes-agent.nousresearch.com/docs/api/model-catalog.json
+  ttl_hours: 1
+network:
+  force_ipv4: false
+gateway:
+  strict: false
+  media_delivery_allow_dirs: []
+  trust_recent_files: true
+  trust_recent_files_seconds: 600
+streaming:
+  enabled: false
+  transport: auto
+  edit_interval: 0.8
+  buffer_threshold: 24
+  cursor: ' ▉'
+  fresh_final_after_seconds: 0.0
+sessions:
+  auto_prune: false
+  retention_days: 90
+  vacuum_after_prune: true
+  min_interval_hours: 24
+  write_json_snapshots: false
+onboarding:
+  seen:
+    busy_input_prompt: true
+    tool_progress_prompt: true
+  profile_build: ask
+updates:
+  pre_update_backup: false
+  backup_keep: 5
+  non_interactive_local_changes: stash
+lsp:
+  enabled: true
+  wait_mode: document
+  wait_timeout: 5.0
+  install_strategy: auto
+x_search:
+  model: grok-4.20-reasoning
+  timeout_seconds: 180
+  retries: 2
+secrets:
+  bitwarden:
+    enabled: false
+    access_token_env: BWS_ACCESS_TOKEN
+    project_id: ''
+    cache_ttl_seconds: 300
+    override_existing: true
+    auto_install: true
+    server_url: ''
+paste_collapse_threshold: 5
+paste_collapse_threshold_fallback: 5
+paste_collapse_char_threshold: 2000
+_config_version: 33
+child_timeout_seconds: 600
+command_timeout: 30
+custom_providers:
+  - name: zylooo
+    base_url: https://api.zyloo.io/v1/chat/completions
+    api_key: <REDACTED-API-KEY>
+    model: zyloo/claude-opus-4-7
+    api_mode: anthropic_messages
+  - name: akashml
+    base_url: https://api.akashml.com/v1
+    api_key: <REDACTED-API-KEY>
+    models:
+      - deepseek-ai/DeepSeek-V4-Flash-0731
+      - zai-org/GLM-5.2
+      - Qwen/Qwen3.6-35B-A3B
+      - meta-llama/Llama-3.3-70B-Instruct
+      - Qwen/Qwen3.5-35B-A3B
+  - name: makora
+    base_url: https://inference.makora.com/v1
+    api_key: <REDACTED-API-KEY>
+    model: moonshotai/Kimi-K2.7-Code
+    models:
+      Kimi-K3: {}
+      Kimi-K2.7-Code: {}
+      DeepSeek-V4-Flash: {}
+      DeepSeek-V4-Pro: {}
+      GLM-5.2-FP8: {}
+      GLM-5.2-NVFP4: {}
+  - name: APIKU
+    base_url: https://<internal-endpoint>/v1
+    api_key: <REDACTED-API-KEY>
+    models:
+      - Executor.
+      - Executor_2
+      - cf/@cf/meta/llama-3.2-1b-instruct
+      - cf/@cf/meta/llama-3.2-3b-instruct
+      - cf/@cf/meta/llama-3.1-8b-instruct-fp8-fast
+      - cf/@cf/meta/llama-3.1-8b-instruct-awq
+      - cf/@cf/meta/llama-3.1-70b-instruct-fp8-fast
+      - cf/@cf/meta/llama-3.3-70b-instruct-fp8-fast
+      - cf/@cf/mistralai/mistral-small-3.1-24b-instruct
+      - cf/@cf/meta/llama-3.1-70b-instruct-fp8-fast
+      - cf/@cf/meta/llama-3.3-70b-instruct-fp8-fast
+      - cf/@cf/deepseek-ai/deepseek-r1-distill-qwen-32b
+      - cf/@cf/moonshotai/kimi-k2.5
+      - cf/@cf/moonshotai/kimi-k2.6
+      - cf/@cf/zai-org/glm-4.7-flash
+      - cf/@cf/qwen/qwq-32b
+      - cf/@cf/qwen/qwen2.5-coder-32b-instruct
+      - cf/@cf/zai-org/glm-5.2
+      - Hcnsec/auto
+      - Hcnsec/DeepSeek-V4-Flash
+      - Hcnsec/DeepSeek-V4-Pro
+      - Hcnsec/glm-5.1
+      - Hcnsec/glm-5.2
+      - Hcnsec/kat-coder-pro-v2.5
+      - Hcnsec/Kimi-K2.6
+      - Hcnsec/MiniMax-M3
+      - Hcnsec/sensenova-6.7-flash-lite
+      - Hcnsec/sensenova-u1-fast
+      - Hcnsec/step-3.5-flash
+      - Hcnsec/step-3.5-flash-2603
+      - Hcnsec/step-3.7-flash
+      - Hcnsec/step-explore
+      - Hcnsec/step-image-edit-2
+      - Hcnsec/step-router-v1
+      - Hcnsec/stepaudio-2.5-asr
+      - Hcnsec/stepaudio-2.5-chat
+      - Hcnsec/stepaudio-2.5-realtime
+      - Hcnsec/stepaudio-2.5-tts
+      - Hcnsec/Qwen3.5-397B-A17B
+      - Hcnsec/Qwen3.6-35B-A3B
+      - XKR/openai/gpt-5.5
+      - XKR/mistralai/ministral-14b
+      - XKR/minimax/minimax-m2.5-highspeed
+      - XKR/minimax/minimax-m2.1
+      - XKR/minimax/minimax-m2
+      - XKR/qwen/qwen3.8-max
+      - XKR/anthropic/claude-opus-4.7
+      - XKR/qwen/qwen3.5-omni-plus
+      - XKR/openai/gpt-5.6-luna
+      - XKR/anthropic/claude-sonnet-5
+      - XKR/openai/gpt-5.6-terra
+      - XKR/qwen/qwen3.7-plus
+      - XKR/openai/gpt-5.6-sol
+      - XKR/openai/gpt-5.4-mini
+      - XKR/openai/gpt-5.4
+      - XKR/qwen/qwen3.6-max-preview
+      - XKR/qwen/qwen3.6-plus
+      - XKR/anthropic/claude-opus-4.8
+      - XKR/anthropic/claude-opus-4.6
+      - XKR/qwen/qwen3.6-27b
+      - XKR/anthropic/claude-opus-5
+      - XKR/anthropic/claude-sonnet-4.6
+      - XKR/anthropic/claude-haiku-4.5
+      - XKR/mistralai/mistral-medium-3.5
+      - XKR/mistralai/mistral-small-2603
+      - XKR/z-ai/glm-5.2
+      - XKR/z-ai/glm-4.7
+      - XKR/mistralai/codestral-2508
+      - XKR/z-ai/glm-5.1
+      - XKR/z-ai/glm-5-turbo
+      - XKR/z-ai/glm-4.6
+      - XKR/mistralai/ministral-8b
+      - XKR/minimax/minimax-m3
+      - XKR/mistralai/ministral-3b
+      - XKR/z-ai/glm-5
+      - XKR/z-ai/glm-4.5
+      - XKR/z-ai/glm-4.5-air
+      - XKR/minimax/minimax-m2.7-highspeed
+      - XKR/qwen/qwen3-vl-plus
+      - XKR/minimax/minimax-m2.1-highspeed
+      - XKR/xiaomi/mimo-v2.5-pro:free
+      - XKR/qwen/qwen3-omni-flash
+      - XKR/qwen/qwen3.7-max
+      - XKR/nvidia/nemotron-3-nano-omni
+      - XKR/qwen/qwen3.5-plus
+      - XKR/qwen/qwen3.5-flash
+      - XKR/nvidia/llama-3.3-nemotron-super-49b
+      - XKR/qwen/qwen3.6-35b-a3b
+      - XKR/qwen/qwen-plus-2025-07-28
+      - XKR/qwen/qwen3-max
+      - XKR/xiaomi/mimo-v2.5:free
+      - XKR/nvidia/nemotron-3-ultra
+      - XKR/nvidia/nemotron-3-super
+      - XKR/nvidia/nemotron-3-nano
+      - XKR/anthropic/claude-fable-5
+      - XKR/deepseek/deepseek-v4-pro
+      - XKR/deepseek/deepseek-chat-v3.1
+      - XKR/deepseek/deepseek-v4-flash
+      - XKR/deepseek/deepseek-v3.2
+      - mistral/mistral-large-latest
+      - mistral/codestral-latest
+      - mistral/mistral-medium-latest
+  - name: skidaw
+    base_url: https://api.skidaw.my.id/v1
+    api_key: <REDACTED-API-KEY>
+    models:
+      - meta/muse-spark-1.2-contributor
+    api_mode: openai_chat
+default:
+  model: kimi-k3
+  provider: makora
+gateway_timeout: 1800
+inactivity_timeout: 120
+inline_shell_timeout: 10
+platforms:
+  telegram:
+    allowed_chats:
+      - '<redacted>'
+    bot_token: <REDACTED>
+    reply_to_mode: first
+script_timeout_seconds: 3000
+timeout: 180
+llm:
+  default_model: kimi-k2.7-code
+default_provider: ai1833
+ai1833:
+  model: kimi-k2.7-code

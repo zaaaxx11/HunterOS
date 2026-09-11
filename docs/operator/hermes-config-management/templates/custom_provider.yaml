@@ -1,0 +1,45 @@
+# Custom Provider Template
+# Copy this block into ~/.hermes/config.yaml under custom_providers: list
+# Run: hermes config check && hermes stop && hermes start
+
+  - name: <provider-name>
+    base_url: https://api.example.com/v1
+    api_key: <your-api-key>
+    models:
+      - model-id-1
+      - model-id-2
+    api_mode: openai_chat  # or anthropic_messages
+
+---
+# Example: OpenAI-compatible endpoint
+  - name: my-openai-compat
+    base_url: https://api.myprovider.com/v1
+    api_key: <REDACTED-API-KEY>
+    models:
+      - gpt-4o
+      - gpt-4o-mini
+    api_mode: openai_chat
+
+---
+# Example: Anthropic-compatible endpoint
+  - name: my-anthropic-compat
+    base_url: https://api.myprovider.com/v1
+    api_key: <REDACTED-API-KEY>
+    model: claude-3-5-sonnet-20241022
+    models:
+      - claude-3-5-sonnet-20241022
+      - claude-3-5-haiku-20241022
+    api_mode: anthropic_messages
+
+---
+# Example: Multiple models from single endpoint (like APIKU)
+  - name: multi-model-endpoint
+    base_url: https://api.example.com/v1
+    api_key: <REDACTED-API-KEY>
+    models:
+      - deepseek-v4-pro
+      - deepseek-v4-flash
+      - glm-5.2
+      - kimi-k2.7-code
+      - qwen3-235b-a22b
+    api_mode: openai_chat

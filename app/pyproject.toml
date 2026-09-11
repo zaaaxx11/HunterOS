@@ -1,0 +1,59 @@
+[project]
+name = "huntos"
+version = "0.3.0"
+description = "HUNT-OS - operational framework app for security hunting: state, evidence ladder, enforcement"
+readme = "WALKTHROUGH.md"
+license = { text = "MIT" }
+authors = [{ name = "Mafaza Bagas" }]
+requires-python = ">=3.10"
+dependencies = []
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+]
+
+[project.urls]
+Repository = "https://github.com/zaaaxx11/Hunter"
+
+[project.scripts]
+hunt = "huntos.cli.main:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# Public-content boundary: keep this allowlist explicit so a dedicated OSINT
+# or future private content tree cannot enter wheels by merely being added
+# under _data/idea.
+huntos = [
+  "_data/idea/IDEA.md",
+  "_data/idea/HUNT-BRIDGE.md",
+  "_data/idea/skills/INDEX.md",
+  "_data/idea/skills/README.md",
+  "_data/idea/skills/cdc/**/*",
+  "_data/idea/skills/recon/**/*",
+  "_data/idea/skills/verification/**/*",
+  "_data/idea/skills/web2/**/*",
+  "_data/idea/skills/web3/**/*",
+  "_data/roles/*",
+  "_data/hooks/*",
+  "_data/bin/*",
+]
+
+[tool.setuptools.exclude-package-data]
+huntos = [
+  "_data/attic/**/*",
+  "_data/idea/skills/osint/**/*",
+  "_data/**/private/**/*",
+  "**/__pycache__/*",
+  "**/*.py[cod]",
+]

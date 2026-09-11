@@ -1,0 +1,18 @@
+# Public-content boundary: only these maintained trees enter release sdists.
+include src/huntos/_data/idea/IDEA.md
+include src/huntos/_data/idea/HUNT-BRIDGE.md
+include src/huntos/_data/idea/skills/INDEX.md
+include src/huntos/_data/idea/skills/README.md
+recursive-include src/huntos/_data/idea/skills/cdc *
+recursive-include src/huntos/_data/idea/skills/recon *
+recursive-include src/huntos/_data/idea/skills/verification *
+recursive-include src/huntos/_data/idea/skills/web2 *
+recursive-include src/huntos/_data/idea/skills/web3 *
+recursive-include src/huntos/_data/roles *
+recursive-include src/huntos/_data/hooks *
+recursive-include src/huntos/_data/bin *
+prune src/huntos/_data/attic
+prune src/huntos/_data/idea/skills/osint
+global-exclude *private*
+global-exclude __pycache__
+global-exclude *.py[cod]

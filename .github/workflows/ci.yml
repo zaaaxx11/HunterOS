@@ -1,0 +1,295 @@
+name: framework-ci
+
+on: [push, pull_request]
+
+jobs:
+  structure:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Framework structure contract
+        run: |
+          set -e
+          # The doctrine/corpus layer lives inside the package now:
+          # app/src/huntos/_data/{idea,roles,hooks,bin,attic} + installer.py.
+          test -f app/src/huntos/_data/idea/IDEA.md
+          test -f app/src/huntos/_data/idea/HUNT-BRIDGE.md
+          test -f app/src/huntos/installer.py
+          test -f app/src/huntos/_data/roles/lane-runner.md
+          test -f app/src/huntos/_data/roles/architect.md
+          test -f app/src/huntos/_data/roles/red-teamer.md
+          test -f app/src/huntos/_data/roles/fuzz-engineer.md
+          test -f app/src/huntos/_data/roles/chainer.md
+          test -f app/src/huntos/_data/roles/adversary.md
+          test -f app/src/huntos/_data/roles/verifier.md
+          test -f app/src/huntos/_data/bin/claim_gate.py
+          test -f app/src/huntos/_data/bin/README.md
+          test -f app/src/huntos/_data/hooks/claim_gate_wrapper.sh
+          test -f app/src/huntos/_data/hooks/claim_gate_wrapper.py
+          test -f docs/FRAMEWORK.md
+          test -f templates/FINDING.md
+          test -f templates/REPORT.md
+          test -f templates/RETRO.md
+          test -f checks/PRE-REPORT.md
+          # The legacy root layout must stay dead: soul/, bridge/, install/ were
+          # folded into app/src/huntos/_data/ and must never come back.
+          test ! -d soul
+          test ! -d bridge
+          test ! -d install
+          echo "structure OK"
+
+      - name: Skills reference integrity
+        run: |
+          set -e
+          IDEA=app/src/huntos/_data/idea/IDEA.md
+          SKILLS=app/src/huntos/_data/idea/skills
+          test -f "$SKILLS/INDEX.md"
+          # Every skill_view(name='X') in IDEA.md must resolve to a landed
+          # SKILL.md under the packaged corpus (by folder name or front-matter
+          # name). Strict since the 2026-09-07 cull: no catalogued-but-missing
+          # tolerance (the full local suite lives under ignored test/tests/).
+          refs=$(grep -oE "skill_view\(name='[^']+'\)" "$IDEA" \
+                 | sed -E "s/^skill_view\(name='([^']+)'\)$/\1/" | sort -u) || true
+          if [ -z "$refs" ]; then
+            echo "no skill_view references in $IDEA"; exit 1
+          fi
+          failed=0
+          for name in $refs; do
+            resolved=""
+            while IFS= read -r f; do
+              if [ "$(basename "$(dirname "$f")")" = "$name" ] \
+                 || head -10 "$f" | grep -qE "^name:[[:space:]]*${name}[[:space:]]*$"; then
+                resolved="$f"; break
+              fi
+            done < <(find "$SKILLS" -name SKILL.md)
+            if [ -n "$resolved" ]; then
+              echo "resolved  skill_view(name='$name') -> $resolved"
+            else
+              echo "UNRESOLVED skill_view(name='$name'): no SKILL.md under $SKILLS/"; failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then exit 1; fi
+          echo "skills reference integrity OK"
+
+      - name: IDEA identity contract (Hunter-OS identity)
+        run: |
+          set -e
+          IDEA=app/src/huntos/_data/idea/IDEA.md
+          grep -q "HUNT-OS IDEA v1.0" "$IDEA"
+          grep -q "CDC THINKING" "$IDEA"
+          grep -q "BLACK SWAN ENGINE" "$IDEA"
+          grep -q "Hunter-OS" "$IDEA"
+          grep -q "skill_view(name='black-swan-engine')" "$IDEA"
+          if grep -qE "Zoya|Zaaaxx" "$IDEA"; then echo "persona name leaked into the idea layer"; exit 1; fi
+          echo "idea OK"
+
+      - name: Doctrine invariants
+        run: |
+          set -e
+          grep -qi "theoretical" templates/FINDING.md && grep -qi "proven-live" templates/FINDING.md
+          grep -q "Chain > Collection" docs/FRAMEWORK.md
+          grep -q "Evidence or Nothing" docs/FRAMEWORK.md
+          grep -q "No fabricated output" docs/FRAMEWORK.md
+          echo "doctrine OK"
+
+      - name: Template contract (ladder + falsifier fields)
+        run: |
+          set -e
+          grep -q "ladder" templates/FINDING.md
+          grep -q "Falsifier" templates/FINDING.md
+          grep -q "evidence_ref" templates/FINDING.md
+          grep -qi "impact chain" templates/REPORT.md
+          echo "templates OK"
+
+      - name: Lead lane doctrine contract (v0.4 observation lane)
+        run: |
+          set -e
+          leads=$(grep -c 'hunt lead' app/src/huntos/_data/idea/HUNT-BRIDGE.md || true)
+          echo "hunt lead occurrences in HUNT-BRIDGE.md: $leads"
+          if [ "$leads" -lt 5 ]; then echo "HUNT-BRIDGE must teach the lead lane (>= 5 'hunt lead' lines)"; exit 1; fi
+          echo "lead doctrine OK"
+
+      - name: Secret hygiene
+        run: |
+          set -e
+          python3 - <<'PY'
+          import re
+          import subprocess
+          import sys
+          # Every tracked file, every type: the corpus now ships inside app/src
+          # and legitimately TEACHES credential shapes (detection regexes,
+          # redacted examples, env placeholders). An educational shape is
+          # allowed; a concrete secret is not.
+          PATTERNS = [
+              re.compile(r"ghp_[A-Za-z0-9]{20,}"),
+              re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
+              re.compile(r"sk-[A-Za-z0-9]{20,}"),
+              re.compile(r"AKIA[0-9A-Z]{16}"),
+              re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+              re.compile(r"Bearer\s+[A-Za-z0-9._~+/-]{20,}"),
+          ]
+          # Line-level allowlist: a shape carrying '[', '$' (env placeholder),
+          # or '<REDACTED' teaches the FORM of a credential; a '...' truncation
+          # (e.g. a JWT header quoted in a hunt report) is an elided sample,
+          # not the token. File-level: local full-suite fixtures MUST contain
+          # secret-shaped strings to exercise the secrets gate and the claim
+          # gate (the landed corpus is covered by the local full suite).
+          def line_allowed(line):
+              return ("[" in line or "$" in line or "<REDACTED" in line
+                      or "..." in line)
+          PEM_BODY = re.compile(r"[A-Za-z0-9+/=]{40,}")
+          files = subprocess.check_output(
+              ["git", "ls-files"], text=True, errors="replace").splitlines()
+          hits = []
+          for name in files:
+              if not name:
+                  continue
+              posix = name.replace("\\", "/")
+              if posix.startswith("test/tests/"):
+                  continue
+              try:
+                  with open(name, encoding="utf-8", errors="replace") as fh:
+                      lines = fh.read().splitlines()
+              except OSError:
+                  continue
+              for lineno, line in enumerate(lines):
+                  for pat in PATTERNS:
+                      if not pat.search(line) or line_allowed(line):
+                          continue
+                      if pat.pattern.startswith("-----BEGIN"):
+                          # a bare PEM header is only a leak if real key
+                          # material follows within the next lines
+                          body = any(
+                              PEM_BODY.fullmatch(l.strip())
+                              for l in lines[lineno + 1:lineno + 4])
+                          if not body:
+                              continue
+                      hits.append(f"{name}:{lineno + 1}: {pat.pattern}")
+          if hits:
+              print("\n".join(hits))
+              print("SECRET LEAKED")
+              sys.exit(1)
+          print("secrets OK")
+          PY
+
+      - name: Compile every tracked Python file
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          files = subprocess.check_output(["git", "ls-files", "*.py"], text=True).splitlines()
+          for name in files:
+              compile(Path(name).read_bytes(), name, "exec")
+          print(f"compiled {len(files)} tracked Python files")
+          PY
+
+      - name: Tracked smoke contracts
+        run: |
+          set -e
+          python3 -m pip install --quiet pytest
+          PYTHONPATH="$PWD/app/src" python3 -m pytest tests/smoke/ -q
+
+      - name: Local full suite (when test bundle is present)
+        if: ${{ hashFiles('test/tests/**/*.py') != '' }}
+        run: |
+          set -e
+          python3 -m pip install --quiet pytest
+          PYTHONPATH="$PWD/app/src" python3 -m pytest test/tests/ -q
+
+      - name: Wheel install smoke (proves _data ships in the package)
+        run: |
+          set -e
+          # Build a real wheel and install it NON-editable, then run from a
+          # throwaway cwd OUTSIDE the checkout. `hunt install` succeeding from
+          # there proves app/src/huntos/_data/ was packaged into the wheel.
+          python3 -m pip install --quiet wheel
+          python3 -m pip wheel ./app --no-deps -w hwheel
+          python3 -m pip install --quiet --no-deps --no-index --find-links "$PWD/hwheel" huntos
+          fresh="$(mktemp -d)"
+          cd "$fresh"
+          export HUNT_DB="$fresh/hunt.db"
+          hunt target prepare --help | grep -q -- '--authorization-note'
+          printf '# installed console smoke\ntarget list\n' > smoke.hsh
+          hunt shell --script smoke.hsh | grep -q 'all exit 0'
+          # packaged data layer: installer runs from the wheel with no checkout
+          dest="$fresh/skills"
+          hunt install --adapter generic --dir "$dest"
+          test -f "$dest/hunt-os/SKILL.md"
+          # the claim gate travels in the package too, and stays fail-closed:
+          # an unbacked claim against an unreadable db is exit 2
+          gate="$(python3 -c 'import huntos, os; print(os.path.join(os.path.dirname(huntos.__file__), "_data", "bin", "claim_gate.py"))')"
+          test -f "$gate"
+          rc=0
+          echo 'PROVEN[F-9]' | HUNT_DB="$fresh/none.db" python3 "$gate" || rc=$?
+          test "$rc" -eq 2
+          echo "wheel install smoke OK"
+
+      - name: Generic install and Python claim wrapper
+        run: |
+          set -e
+          dest="$(mktemp -d)/skills"
+          hunt install --adapter generic --dir "$dest"
+          test -f "$dest/hunt-os/hooks/claim_gate_wrapper.py"
+          db="$(mktemp -d)/hunt.db"
+          HUNT_DB="$db" hunt target list >/dev/null
+          HUNT_DB="$db" python3 "$dest/hunt-os/hooks/claim_gate_wrapper.py" <<<'ordinary note'
+
+      - name: Fresh wheel and sdist CLI smoke
+        run: |
+          set -e
+          # Keep build/install checks isolated from the checkout and from the
+          # pytest environment. Each artifact gets its own venv and is tested
+          # from a directory that cannot provide app/src implicitly.
+          root="$PWD"
+          work="$(mktemp -d)"
+          python3 -m venv "$work/build-venv"
+          if [ -x "$work/build-venv/Scripts/python.exe" ]; then
+            buildpy="$work/build-venv/Scripts/python.exe"
+            venv_python() { printf '%s/Scripts/python.exe' "$1"; }
+            venv_hunt() { printf '%s/Scripts/hunt.exe' "$1"; }
+          else
+            buildpy="$work/build-venv/bin/python"
+            venv_python() { printf '%s/bin/python' "$1"; }
+            venv_hunt() { printf '%s/bin/hunt' "$1"; }
+          fi
+          "$buildpy" -m pip install --quiet build
+          "$buildpy" -m build "$root/app" --outdir "$work/dist"
+          for artifact in "$work/dist"/*.whl "$work/dist"/*.tar.gz; do
+            envdir="$work/$(basename "$artifact" | tr '.-' '__')-venv"
+            python3 -m venv "$envdir"
+            artifactpy="$(venv_python "$envdir")"
+            huntexe="$(venv_hunt "$envdir")"
+            "$artifactpy" -m pip install --quiet --no-deps "$artifact"
+            smoke="$work/smoke-$(basename "$artifact")"
+            mkdir -p "$smoke"
+            (
+              cd "$smoke"
+              export HUNT_DB="$smoke/hunt.db"
+              "$huntexe" --help >/dev/null
+              "$artifactpy" -m huntos --help >/dev/null
+              "$huntexe" target list >/dev/null
+              test -f "$smoke/hunt.db"
+            )
+            echo "artifact smoke OK: $(basename "$artifact")"
+          done
+
+      - name: Zero-dependency guarantee (product is stdlib-only)
+        run: |
+          set -e
+          # The product layer is the hunt CLI + installer + claim gate under
+          # app/src, EXCEPT the packaged doctrine corpus (_data/): landed
+          # skills legitimately teach `pip install` for tools used on
+          # operator/target machines during a hunt; that is documentation,
+          # not a product dependency. (*_egg-info build noise is never code.)
+          if grep -rn 'pip[ ]install' app/src --exclude-dir=_data --exclude-dir='*.egg-info'; then
+            echo "pip dependency found in product layer"; exit 1
+          fi
+          echo "product is stdlib-only; CI may install test-only tooling"
