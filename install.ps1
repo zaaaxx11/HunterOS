@@ -427,5 +427,8 @@ try {
 
 if ($failure) {
     Write-Err $failure.Exception.Message
-    exit 1
+    # `exit` from an `irm ... | iex` invocation terminates the user's whole
+    # interactive PowerShell host. A terminating error still reports failure
+    # to `powershell -File`/CI while returning control to an interactive shell.
+    throw $failure.Exception
 }
