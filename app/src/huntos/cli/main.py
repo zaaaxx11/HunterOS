@@ -269,6 +269,55 @@ def _emit_refusal(line: str, as_json: bool) -> None:
     print(json.dumps({"ok": False, "code": 2, "error": error, "next": next_cmd}))
 
 
+# --- Phase 4: static panels + work receipts + position block -----------------
+# Display-only: every helper is import-light (render.py imports stdlib +
+# .terminal + .errors only; the db kernel stays lazy inside position_block)
+# and display NEVER crashes a command — callers wrap in try/except and skip
+# on "" so a rendering failure can never turn a success into an error.
+
+
+def _show_panel(text: str) -> None:
+    """Print a pre-rendered panel (already framed by cli/render.py)."""
+    if text:
+        print(text)
+
+
+def _show_receipt(what: str, next_cmd: str | None = None) -> None:
+    """Append a one-line DONE|NEXT work receipt (never raises)."""
+    try:
+        from .render import receipt as _receipt
+        print(_receipt(what, next_cmd))
+    except Exception:
+        pass
+
+
+def _show_position(conn, target_id) -> None:
+    """Append the WHERE/EXIT/WAVE/WORK block (never raises, skips on "")."""
+    try:
+        from .render import position_block as _position_block
+        block = _position_block(conn, target_id)
+        if block:
+            print(block)
+    except Exception:
+        pass
+
+
+def _tid_of(conn, table: str, row_id) -> int | None:
+    """Read-only target_id lookup for receipt NEXT hints (None on any miss).
+
+    Table names are caller-hardcoded literals (findings/waves/leads/chains);
+    only the id value is bound."""
+    try:
+        row = conn.execute(
+            f"SELECT target_id FROM {table} WHERE id=?", (row_id,)
+        ).fetchone()
+        if row is not None and row["target_id"] is not None:
+            return int(row["target_id"])
+        return None
+    except Exception:
+        return None
+
+
 def cmd_target(args, conn) -> int:
     if args.action == "prepare":
         from ..core.target_source import (
@@ -294,9 +343,11 @@ def cmd_target(args, conn) -> int:
         print(f"revision: {source.revision or '(none)'}")
         if source.kind == "url":
             print("URL recorded only — no automatic probe or crawl was performed")
+        _show_receipt(f"prepared target #{tid}", f"hunt next --target {tid}")
     elif args.action == "add":
         tid = db.add_target(conn, args.name, args.url, args.chain, args.age_days, args.tvl, args.notes)
         print(f"target #{tid} added: {args.name} ({args.url}) phase=scoring")
+        _show_receipt(f"added target #{tid}", f"hunt next --target {tid}")
     elif args.action == "roe":
         # `hunt target roe <target_id> ...` — the target id is a required
         # positional on the roe subparser (parse-time enforced).
@@ -305,6 +356,7 @@ def cmd_target(args, conn) -> int:
         row = db.get_roe(conn, tid)
         print(f"roe updated for target #{tid}: actions={row['actions']} hosts={row['hosts']}")
         print("(hosts are informational only — only actions are enforced; default-deny for mutate)")
+        _show_receipt(f"updated roe for target #{tid}", f"hunt next --target {tid}")
     elif args.action == "list":
         rows = db.list_targets(conn)
         if not rows:
@@ -327,6 +379,7 @@ def cmd_target(args, conn) -> int:
             raise ValueError("BLOCKED: archive requires a reason — why is this hunt closing?")
         db.archive_target(conn, args.target_id, reason)
         print(f"target #{args.target_id} archived: {reason}")
+        _show_receipt(f"archived target #{args.target_id}", "hunt status")
     return 0
 
 
@@ -338,12 +391,16 @@ def cmd_score(args, conn) -> int:
         raise ValueError("BLOCKED: ev_score must be a finite number > 0")
     db.score_target(conn, args.target_id, args.ev)
     print(f"target #{args.target_id} scored ev={args.ev}")
+    _show_receipt(f"scored target #{args.target_id} ev={args.ev}",
+                    f"hunt next --target {args.target_id}")
     return 0
 
 
 def cmd_phase(args, conn) -> int:
     db.set_phase(conn, args.target_id, args.phase)
     print(f"target #{args.target_id} phase -> {args.phase}")
+    _show_receipt(f"moved target #{args.target_id} to {args.phase}",
+                    f"hunt next --target {args.target_id}")
     return 0
 
 
@@ -369,6 +426,8 @@ def cmd_finding(args, conn) -> int:
         print(f"finding #{fid} added [{args.severity}] {args.title} (theoretical, action={args.finding_action})"
               + (f" surface=#{args.surface}" if args.surface is not None else "")
               + f" — {linkage}")
+        _show_receipt(f"added finding #{fid}",
+                        f"hunt poc run --id {fid} --poc-path <file>")
     elif args.action == "retitle":
         # L2.1: bookkeeping retitle (mangled titles are not an overturn). The
         # MSYS guard runs on the NEW title; db.retitle_finding enforces the
@@ -376,24 +435,31 @@ def cmd_finding(args, conn) -> int:
         _reject_msys_mangled(args.title)
         db.retitle_finding(conn, args.id, args.title)
         print(f"finding #{args.id} retitled: {args.title}")
+        _show_receipt(f"retitled finding #{args.id}", "hunt status")
     elif args.action == "promote":
         new_status = db.promote_finding(conn, args.id, args.evidence_ref, args.poc_path)
         print(f"finding #{args.id} promoted -> {new_status} (evidence: {args.evidence_ref})")
+        _show_receipt(f"promoted finding #{args.id} to {new_status}", "hunt status")
     elif args.action == "overturn":
         db.overturn_finding(conn, args.id, args.by)
         print(f"finding #{args.id} OVERTURNED by {args.by} (audit trail kept)")
+        _show_receipt(f"overturned finding #{args.id}", "hunt status")
     return 0
 
 
 def cmd_verify(args, conn) -> int:
     db.record_verification(conn, args.finding_id, args.artifact_type, args.body, args.role)
     print(f"verification recorded on finding #{args.finding_id}: {args.artifact_type} (by {args.role})")
+    _show_receipt(f"verified finding #{args.finding_id}",
+                    f"hunt poc run --id {args.finding_id} --poc-path <file>")
     return 0
 
 
 def cmd_challenge(args, conn) -> int:
     db.record_adversary(conn, args.finding_id, args.notes, args.role)
     print(f"adversary review recorded on finding #{args.finding_id} (by {args.role})")
+    _show_receipt(f"challenged finding #{args.finding_id}",
+                    f"hunt poc run --id {args.finding_id} --poc-path <file>")
     return 0
 
 
@@ -433,12 +499,16 @@ def cmd_poc(args, conn) -> int:
         digest = hashlib.sha256(fh.read()).hexdigest()
     db.record_poc_run(conn, args.id, args.poc_path, proc.returncode, tail)
     print(f"poc run recorded: exit={proc.returncode} sha256:{digest[:12]}")
+    _show_receipt(f"ran poc for finding #{args.id}",
+                    f"hunt finding promote --id {args.id} --evidence-ref <ref> --poc-path {args.poc_path}")
     return 0
 
 
 def cmd_artifact(args, conn) -> int:
     db.record_phase_artifact(conn, args.target_id, args.artifact_type, args.path)
     print(f"artifact {args.artifact_type} recorded on target #{args.target_id}: {args.path}")
+    _show_receipt(f"recorded {args.artifact_type} on target #{args.target_id}",
+                    f"hunt next --target {args.target_id}")
     return 0
 
 
@@ -447,6 +517,7 @@ def cmd_wave(args, conn) -> int:
         wid = db.open_wave(conn, args.target_id, args.lanes)
         w = db.list_waves(conn, args.target_id)[-1]
         print(f"wave #{wid} opened (number {w['number']}) lanes={args.lanes}")
+        _show_receipt(f"opened wave #{wid}", f"hunt brief {args.target_id}")
     elif args.action == "close":
         db.close_wave(conn, args.wave_id, args.verdict)
         w = conn.execute(
@@ -462,6 +533,8 @@ def cmd_wave(args, conn) -> int:
             )
         else:
             print(f"wave #{args.wave_id} closed findings_new={w['findings_new']} verdict={args.verdict}")
+        _show_receipt(f"closed wave #{args.wave_id} verdict={args.verdict}",
+                        f"hunt wave reaudit --wave-id {args.wave_id} --summary \"...\"")
     elif args.action == "reaudit":
         if not args.summary:
             raise ValueError(
@@ -470,6 +543,7 @@ def cmd_wave(args, conn) -> int:
             )
         db.record_reaudit(conn, args.wave_id, args.summary)
         print(f"wave #{args.wave_id} re-audit recorded: {args.summary}")
+        _show_receipt(f"re-audited wave #{args.wave_id}", "hunt status")
     return 0
 
 
@@ -506,6 +580,8 @@ def cmd_report(args, conn) -> int:
         # propagates to main()'s BLOCKED handler (exit 2), the file stays.
         db.record_phase_artifact(conn, args.target_id, "disclosure_report", args.out)
         print(f"report written to {args.out}")
+        _show_receipt(f"wrote report for target #{args.target_id}",
+                        f"hunt next --target {args.target_id}")
     else:
         print(out)
     return 0
@@ -553,6 +629,7 @@ def cmd_lesson(args, conn) -> int:
         lid = db.add_lesson(conn, args.source, args.pattern, args.scope, args.notes,
                             target_id=args.target_id)
         print(f"lesson #{lid} recorded ({args.scope}): {args.pattern}")
+        _show_receipt(f"recorded lesson #{lid}", "hunt status")
     elif args.action == "reword":
         # L2.1: rewrite the pattern (optionally --notes). Lessons stay rewordable
         # on archived targets (memory additions are not history rewrites); the
@@ -564,6 +641,7 @@ def cmd_lesson(args, conn) -> int:
         if args.notes is not None:
             line += " (notes updated)"
         print(line)
+        _show_receipt(f"reworded lesson #{args.id}", "hunt status")
     elif args.action == "list":
         for r in db.list_lessons(conn):
             print(f"#{r['id']} [{r['scope']}] {r['source_target']}: {r['pattern']}")
@@ -592,6 +670,7 @@ def cmd_klass(args, conn) -> int:
             print(line)
         else:
             print(f"klass '{name}' added to taxonomy (source=cli)")
+        _show_receipt(f"added klass '{name}'", "hunt status")
     return 0
 
 
@@ -614,6 +693,7 @@ def cmd_brief(args, conn) -> int:
     # Read-only: prints the opening read for the next hunt round. No lock
     # interaction beyond the normal main() flow, nothing written.
     print(db.export_brief(conn, args.target_id))
+    _show_position(conn, args.target_id)
     return 0
 
 
@@ -661,6 +741,7 @@ def cmd_next(args, conn) -> int:
     nxt, why = db.next_command(conn, tid)
     print(f"NEXT: {nxt}")
     print(f"WHY: {why}")
+    _show_position(conn, tid)
     return 0
 
 
@@ -687,12 +768,16 @@ def cmd_lead(args, conn) -> int:
               f"#{args.target}: {args.title}"
               + ("" if lead["payload"] else " [payload empty]")
               + (f" surface=#{args.surface}" if args.surface is not None else ""))
+        _show_receipt(f"added lead L-{lid}",
+                        f"hunt lead next --lead {lid}")
     elif args.action == "set-half":
         db.set_lead_half(conn, args.lead, args.half, args.verdict, args.evidence)
         lead = db.get_lead(conn, args.lead)
         print(f"lead L-{args.lead} {args.half} -> {args.verdict} "
               f"(state={lead['state']}, trigger={lead['trigger_verdict']}, "
               f"impact={lead['impact_verdict']})")
+        _show_receipt(f"set lead L-{args.lead} {args.half}={args.verdict}",
+                        f"hunt lead next --lead {args.lead}")
     elif args.action == "mutate":
         mid = db.mutate_lead(conn, args.lead, args.variable, args.old, args.new,
                              args.result, args.evidence, plan=args.plan,
@@ -707,9 +792,13 @@ def cmd_lead(args, conn) -> int:
         print(f"lead L-{args.lead} mutation #{mid} recorded: {args.variable} "
               f"{args.old!r} -> {args.new!r} result={args.result} "
               f"(state={lead['state']}{followup})")
+        _show_receipt(f"mutated lead L-{args.lead} #{mid}",
+                        f"hunt lead next --lead {args.lead}")
     elif args.action == "set":
         db.set_lead_payload(conn, args.lead, args.payload)
         print(f"lead L-{args.lead} payload set ({len(args.payload.strip())} chars)")
+        _show_receipt(f"set payload on lead L-{args.lead}",
+                        f"hunt lead next --lead {args.lead}")
     elif args.action == "next":
         lead = db.get_lead(conn, args.lead)
         nxt = db.next_mutation(conn, args.lead)
@@ -724,6 +813,7 @@ def cmd_lead(args, conn) -> int:
     elif args.action == "park":
         db.park_lead(conn, args.lead, args.retrigger)
         print(f"lead L-{args.lead} parked — tripwire: {args.retrigger}")
+        _show_receipt(f"parked lead L-{args.lead}", "hunt status")
     elif args.action == "kill":
         outcome = db.kill_lead(conn, args.lead, args.trigger_refutation,
                                args.impact_refutation, retrigger=args.retrigger)
@@ -733,15 +823,20 @@ def cmd_lead(args, conn) -> int:
         else:
             print(f"kill refused -> parked (dismissal #{lead['dismissal_count']}) — "
                   f"lead L-{args.lead} tripwire: {lead['retrigger_condition']}")
+        _show_receipt(f"killed lead L-{args.lead}", "hunt status")
     elif args.action == "promote":
         fid = db.promote_lead(conn, args.lead, args.klass, args.severity,
                               action=args.roe_action)
         print(f"lead L-{args.lead} promoted -> finding #{fid} "
               f"[{args.severity}] {args.klass} (provenance snapshot frozen)")
+        _show_receipt(f"promoted lead L-{args.lead} to finding #{fid}",
+                        f"hunt poc run --id {fid} --poc-path <file>")
     elif args.action == "reopen":
         db.reopen_lead(conn, args.lead, args.evidence)
         print(f"lead L-{args.lead} reopened (state=open) — tripwire fired, "
               "the lead is back in the mutation loop")
+        _show_receipt(f"reopened lead L-{args.lead}",
+                        f"hunt lead next --lead {args.lead}")
     elif args.action == "list":
         rows = db.list_leads(conn, args.target)
         if not rows:
@@ -789,6 +884,8 @@ def cmd_oracle(args, conn) -> int:
     else:
         print(f"lead L-{lead_id} {args.half} set to "
               f"{'proven' if verdict == 'confirmed' else 'refuted'}")
+    _show_receipt(f"oracle {verdict} on lead L-{lead_id} {args.half}",
+                    f"hunt lead next --lead {lead_id}")
     return 0
 
 
@@ -807,6 +904,8 @@ def cmd_surface(args, conn) -> int:
     if args.action == "add":
         sid = db.add_surface(conn, args.target_id, args.kind, args.name, notes=args.notes)
         print(f"surface #{sid} added ({args.kind}): {args.name}")
+        _show_receipt(f"added surface #{sid}",
+                        f"hunt coverage {args.target_id}")
     elif args.action == "list":
         rows = db.list_surfaces(conn, args.target_id)
         if not rows:
@@ -842,11 +941,15 @@ def cmd_chain(args, conn) -> int:
         cid = db.add_chain(conn, args.target_id, args.name, entry=args.entry,
                            impact=args.impact, notes=args.notes)
         print(f"chain #{cid} added: {args.name}")
+        _show_receipt(f"added chain #{cid}",
+                        f"hunt chain show --chain-id {cid}")
     elif args.action == "link":
         if args.kind not in ("finding", "lead"):
             raise ValueError("BLOCKED: a chain step links a 'finding' or a 'lead'")
         db.link_step(conn, args.chain_id, args.position, args.kind, args.ref_id)
         print(f"chain #{args.chain_id} step {args.position} <- {args.kind} #{args.ref_id}")
+        _show_receipt(f"linked chain #{args.chain_id} step {args.position}",
+                        f"hunt chain show --chain-id {args.chain_id}")
     elif args.action == "show":
         print(db.chain_detail(conn, args.chain_id))
     elif args.action == "novelty":
@@ -918,6 +1021,7 @@ def cmd_fuzz(args, conn) -> int:
                   f"{param_name}={r['payload_name']}\" (leads stay manual — engine judgment)")
     else:
         print(f"anomalies: none — {total} probes came back clean")
+    _show_receipt(f"fuzzed {args.url} ({total} probes)", "hunt status")
     return 0
 
 
@@ -965,6 +1069,7 @@ def cmd_status(args, conn) -> int:
         # the CLI only displays what it returns.
         for line in db.find_contradictions(conn, t["id"]):
             print(f"    {line}")
+        _show_position(conn, t["id"])
     return 0
 
 
@@ -1485,6 +1590,17 @@ def cmd_run(args, conn) -> int:
         finally:
             _close_adapter(adapter)
         sid = _capget(session, "id", "?")
+        # Phase 4: static start panel first (what opened, where to watch it),
+        # then the byte-identical session line + summary/page anchors.
+        try:
+            from .render import start_panel as _start_panel
+            _show_panel(_start_panel(
+                sid, target_id=args.target, rounds=args.rounds,
+                adapter=args.adapter,
+                color=False if args.no_color else None, stream=sys.stdout,
+            ))
+        except Exception:
+            pass
         print(f"session {sid} -> status={_capget(session, 'status', '?')} "
               f"(target #{args.target}, rounds={args.rounds}, adapter={args.adapter})")
         if args.page:
@@ -1512,6 +1628,15 @@ def cmd_run(args, conn) -> int:
                 ))
             else:
                 print(renderer(conn, session["id"]))
+            # Phase 4: static end panel (resume/view commands), appended.
+            try:
+                from .render import end_panel as _end_panel
+                _show_panel(_end_panel(
+                    session["id"], status=_capget(session, "status", "?"),
+                    color=False if args.no_color else None, stream=sys.stdout,
+                ))
+            except Exception:
+                pass
             return 0
         # Existence is checked here so a bogus --session is a clean BLOCKED
         # even before the summary renderer runs.
@@ -1527,6 +1652,16 @@ def cmd_run(args, conn) -> int:
             ))
         else:
             print(control_room_summary(conn, args.session))
+        # Phase 4: static end panel (resume/view commands), appended.
+        try:
+            from .render import end_panel as _end_panel2
+            recorded = db.get_conductor_session(conn, args.session) or {}
+            _show_panel(_end_panel2(
+                args.session, status=_capget(recorded, "status", "?"),
+                color=False if args.no_color else None, stream=sys.stdout,
+            ))
+        except Exception:
+            pass
         return 0
 
     if action in ("pause", "resume", "abort"):
@@ -1561,6 +1696,15 @@ def cmd_run(args, conn) -> int:
             session = method(conn, args.session)
             print(f"session {args.session} {verb} -> "
                   f"status={_capget(session, 'status', '?')}")
+            # Phase 4: static end panel (resume/view commands), appended.
+            try:
+                from .render import end_panel as _end_panel3
+                _show_panel(_end_panel3(
+                    args.session, status=_capget(session, "status", "?"),
+                    color=None, stream=sys.stdout,
+                ))
+            except Exception:
+                pass
             return 0
         finally:
             _close_adapter(adapter)
@@ -1571,6 +1715,18 @@ def cmd_run(args, conn) -> int:
                                               model_profile=args.model_profile)
             print(f"retry -> attempt {_capget(attempt, 'id', '?')} "
                   f"status={_capget(attempt, 'status', '?')}")
+            # Phase 4: work receipt, appended (sid via the minted attempt).
+            try:
+                sid2 = _capget(attempt, "session_id") or (
+                    recorded_attempt.get("session_id")
+                    if isinstance(recorded_attempt, dict) else None
+                )
+                nxt = (f"hunt run status --session {sid2}"
+                       if sid2 else "hunt run status")
+                _show_receipt(
+                    f"retry minted attempt {_capget(attempt, 'id', '?')}", nxt)
+            except Exception:
+                pass
             return 0
         finally:
             _close_adapter(adapter)
@@ -1588,6 +1744,14 @@ def cmd_run(args, conn) -> int:
         if status:
             line += f" -> attempt status={status}"
         print(line)
+        # Phase 4: work receipt, appended.
+        try:
+            sid3 = _capget(attempt, "session_id")
+            nxt3 = (f"hunt run status --session {sid3}"
+                    if sid3 else "hunt run status")
+            _show_receipt(f"reconciled attempt {args.attempt}", nxt3)
+        except Exception:
+            pass
         return 0
     else:
         # Safety net: argparse restricts the action choices to the subparsers
