@@ -65,6 +65,19 @@ hunt update --check
 package. `HUNTOS_BASE_URL`, `HUNTOS_REPO`, and `HUNTOS_VERSION` can be set for
 an internal mirror or a pinned release.
 
+Self-update is transactional for installations created by the HUNT-OS
+bootstrap (`$HOME/.HunterOS/venv` or `$env:USERPROFILE\.HunterOS\venv`). It
+builds and validates a staged environment before replacing the old one, and
+keeps the previous environment available until final validation succeeds. On
+Windows the replacement is completed by a short-lived helper after the current
+`hunt` process exits, because Windows can lock the running launcher.
+
+Installations managed by pipx, an editable checkout, or an unrelated global
+Python environment are not modified by `hunt update`; use that tool's own
+upgrade command or rerun the bootstrap installer. Devices installed before
+`hunt update` existed need one bootstrap run first, after which future updates
+can use `hunt update`.
+
 On PowerShell `hunt` works immediately in the same shell (the installer
 prepends the venv `Scripts` dir to process `$env:Path` and persists it to
 User PATH for future shells). On POSIX copy-paste the printed
@@ -136,6 +149,13 @@ GitHub requires TLS 1.2; this pre-step allows the initial download to proceed.
 - On POSIX `curl|bash` runs in a child process and cannot update the parent
   shell: copy-paste the printed `export PATH=...` line.
 - Verify: `echo $PATH` (POSIX) or `$env:PATH` (PowerShell)
+
+**Self-update failed**
+- The official venv is staged and validated before promotion. A failed
+  validation preserves the previous environment; rerun `hunt update` after
+  checking the release URL or mirror.
+- If the message says the installation is not the official HUNT-OS venv, use
+  the package manager that owns that installation or rerun the bootstrap once.
 
 </details>
 
