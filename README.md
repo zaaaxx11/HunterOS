@@ -262,6 +262,7 @@ hunt doctor               # workspace preflight
 | `app/src/huntos/_data/idea/` | `IDEA.md` doctrine, `HUNT-BRIDGE.md`, skill corpus |
 | `app/src/huntos/_data/roles/` | Seven lane-role doctrine files |
 | `app/src/huntos/_data/bin/`, `app/src/huntos/_data/hooks/` | Claim gate and hook wrappers |
+| `.claude-plugin/`, `skills/`, `agents/`, `hooks/`, `scripts/`, `always-on-rules.md` | Claude Code plugin layer (marketplace + plugin, mirrors the packaged `_data/`) |
 | `install.sh`, `install.ps1` | Release installers |
 | `QUICKSTART.md`, `app/WALKTHROUGH.md` | Operator guides |
 | `docs/HUNT-ADAPTER-1.md` | Adapter protocol specification |
@@ -274,7 +275,29 @@ hunt doctor               # workspace preflight
 
 ## Agent Integration
 
-Two integration modes:
+Three integration modes:
+
+### Claude Code Plugin (Marketplace)
+
+This repo is its own Claude Code marketplace (same pattern as
+[claude-kit](https://github.com/yeswehack/claude-kit)): repo root carries
+`.claude-plugin/plugin.json` (`hunt-os`) + `.claude-plugin/marketplace.json`
+(`hunter-os`, `plugins[0].source: "."`). Install inside Claude Code:
+
+```
+/plugin marketplace add zaaaxx11/HunterOS
+/plugin install hunt-os@hunter-os
+```
+
+What it adds: `skills/hunt-os` router (1 skill listing, RoE-first doctrine),
+`agents/` (7 lane agents), `hooks/hooks.json` (SessionStart doctrine inject +
+Stop claim-gate veto). The Stop hook needs `python3` and a hunt ledger db
+(`HUNT_DB`, default `~/.huntos/hunt.db`); without a db it passes with a
+stderr warning (documented downgrade). Validate any time:
+
+```sh
+claude plugin validate /path/to/HunterOS
+```
 
 ### Skill-Only Mode (Any Harness)
 

@@ -45,6 +45,51 @@ jobs:
           test ! -d install
           echo "structure OK"
 
+      - name: Claude Code plugin layer contract
+        run: |
+          set -e
+          # Repo root is its own Claude Code marketplace (claude-kit pattern):
+          # .claude-plugin/plugin.json + marketplace.json, skills router,
+          # 7 lane agents, hooks, scripts. The plugin mirrors the packaged
+          # _data/ layer — a stale copy must fail CI, not ship silently.
+          test -f .claude-plugin/plugin.json
+          test -f .claude-plugin/marketplace.json
+          python3 -m json.tool .claude-plugin/plugin.json > /dev/null
+          python3 -m json.tool .claude-plugin/marketplace.json > /dev/null
+          test -f skills/hunt-os/SKILL.md
+          for r in lane-runner architect red-teamer fuzz-engineer chainer adversary verifier; do
+            test -f agents/hunt-$r.md
+          done
+          # Agent bodies must stay faithful to the packaged role doctrine:
+          # agents/hunt-<r>.md body (after its frontmatter) vs the whole of
+          # app/src/huntos/_data/roles/<r>.md (role files carry no
+          # frontmatter), ignoring blank lines.
+          python3 - <<'PY'
+          import re, sys
+          roles = ["lane-runner","architect","red-teamer","fuzz-engineer",
+                   "chainer","adversary","verifier"]
+          def nonblank(t):
+              return [l for l in t.splitlines() if l.strip()]
+          def agent_body(p):
+              t = open(p, encoding="utf-8").read()
+              parts = re.split(r"^---\s*$", t, maxsplit=2, flags=re.M)
+              assert len(parts) == 3, f"no frontmatter in {p}"
+              return nonblank(parts[2])
+          bad = [r for r in roles
+                 if agent_body(f"agents/hunt-{r}.md")
+                 != nonblank(open(f"app/src/huntos/_data/roles/{r}.md",
+                                  encoding="utf-8").read())]
+          if bad:
+              print("agent body drift vs roles/:", ", ".join(bad)); sys.exit(1)
+          print("agent bodies faithful to roles/")
+          # The plugin claim gate must be a byte-copy of the packaged gate.
+          cmp app/src/huntos/_data/bin/claim_gate.py scripts/claim_gate.py
+          test -f hooks/hooks.json
+          test -f scripts/claim-gate-stop.sh
+          test -f always-on-rules.md
+          bash -n scripts/claim-gate-stop.sh
+          echo "plugin layer OK"
+
       - name: Skills reference integrity
         run: |
           set -e

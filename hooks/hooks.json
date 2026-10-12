@@ -1,0 +1,1 @@
+{"hooks":{"SessionStart":[{"hooks":[{"command":"cat \"${CLAUDE_PLUGIN_ROOT}/always-on-rules.md\"","type":"command"}],"matcher":"startup|resume|clear|compact"}],"Stop":[{"hooks":[{"command":"\"${CLAUDE_PLUGIN_ROOT}/scripts/claim-gate-stop.sh\"","type":"command"}]}]}}

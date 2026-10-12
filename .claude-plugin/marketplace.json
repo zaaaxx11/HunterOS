@@ -1,0 +1,1 @@
+{"description":"HunterOS hunting doctrine for Claude Code: RoE-first security and bug-bounty audits.","name":"hunter-os","owner":{"name":"Mafaza Bagas"},"plugins":[{"description":"HunterOS hunting doctrine for Claude Code: RoE-first security/bug-bounty audit router with 7 lane agents and a claim-gate Stop hook.","name":"hunt-os","source":"."}]}
