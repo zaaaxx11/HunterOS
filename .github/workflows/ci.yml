@@ -82,6 +82,7 @@ jobs:
           if bad:
               print("agent body drift vs roles/:", ", ".join(bad)); sys.exit(1)
           print("agent bodies faithful to roles/")
+          PY
           # The plugin claim gate must be a byte-copy of the packaged gate.
           cmp app/src/huntos/_data/bin/claim_gate.py scripts/claim_gate.py
           test -f hooks/hooks.json
