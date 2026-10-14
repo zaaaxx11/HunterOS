@@ -1,1 +1,12 @@
-{"author":{"name":"Mafaza Bagas"},"description":"HunterOS hunting doctrine for Claude Code: RoE-first security/bug-bounty audit router with 7 lane agents and a claim-gate Stop hook.","homepage":"https://github.com/zaaaxx11/HunterOS","keywords":["hunting","bug-bounty","security-audit"],"license":"MIT","name":"hunt-os","repository":"https://github.com/zaaaxx11/HunterOS","version":"0.3.1"}
+{
+  "name": "hunt-os",
+  "version": "0.3.1",
+  "description": "HUNT-OS authorized security-assessment framework: RoE-gated hunt CLI, evidence ladder, and claim gate for Claude Code and ZCode.",
+  "author": {
+    "name": "Mafaza Bagas"
+  },
+  "skills": "./skills",
+  "commands": "./commands",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": ".mcp.json"
+}

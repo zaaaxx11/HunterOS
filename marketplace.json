@@ -1,0 +1,12 @@
+{
+  "name": "hunter-os",
+  "plugins": [
+    {
+      "name": "hunt-os",
+      "source": ".",
+      "version": "0.3.1",
+      "description": "HUNT-OS authorized security-assessment framework with RoE gating and claim-gate enforcement.",
+      "category": "security"
+    }
+  ]
+}

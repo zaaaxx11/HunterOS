@@ -1,0 +1,255 @@
+# Salesforce Community Endpoint Map Template
+
+## Usage
+Copy this template and populate with findings from static analysis + live probing.
+Output as JSON for programmatic consumption by downstream agents (fuzzing, exploit dev, reporting).
+
+---
+
+## Schema
+
+```json
+{
+  "target": "string",
+  "scan_date": "ISO8601 date",
+  "scan_type": "Static Analysis / Source-Sink Tracing",
+  "cloudflare_present": "boolean",
+  "salesforce_instance": "string (e.g., coupangtw.my.salesforce.com)",
+  "community_path_prefix": "string (e.g., /tw)",
+  "community_name": "string (e.g., marketplace)",
+  "overall_risk": "CRITICAL | HIGH | MEDIUM | LOW",
+  "summary": {
+    "total_endpoints_mapped": "integer",
+    "api_versions_exposed": "integer",
+    "api_versions_range": "string (e.g., v31.0 - v67.0)",
+    "unauthenticated_endpoints": "integer",
+    "authenticated_endpoints": "integer",
+    "soql_injection_vectors": "integer",
+    "xss_sinks_identified": "integer",
+    "deserialization_points": "integer",
+    "oauth_saml_endpoints": "integer",
+    "host_header_injection_testable": "integer",
+    "parameter_pollution_testable": "integer",
+    "content_type_confusion_testable": "integer"
+  },
+  "endpoints": {
+    "api_version_enumeration": {
+      "path": "string",
+      "method": "string",
+      "status": "integer",
+      "auth_required": "boolean",
+      "response": "string",
+      "vulnerability_indicators": ["string"],
+      "parameters": ["string"],
+      "headers": ["string"],
+      "cookies": ["string"],
+      "cvss": "float",
+      "finding_id": "string"
+    },
+    "rest_api_base": {
+      "path": "string",
+      "versions_tested": ["string"],
+      "auth_required": "boolean",
+      "endpoints": {
+        "sobjects_list": { /* endpoint object */ },
+        "sobjects_describe": { /* endpoint object */ },
+        "soql_query": { /* endpoint object */ },
+        "sosl_search": { /* endpoint object */ },
+        "composite": { /* endpoint object */ },
+        "composite_tree": { /* endpoint object */ },
+        "composite_batch": { /* endpoint object */ },
+        "connect_api": { /* endpoint object */ },
+        "chatter_api": { /* endpoint object */ },
+        "ui_api": { /* endpoint object */ },
+        "analytics_api": { /* endpoint object */ },
+        "commerce_api": { /* endpoint object */ },
+        "limits": { /* endpoint object */ },
+        "recent": { /* endpoint object */ },
+        "themes": { /* endpoint object */ }
+      }
+    },
+    "apex_rest_custom": { /* endpoint object */ },
+    "oauth_endpoints": {
+      "oauth2_token": { /* endpoint object */ },
+      "oauth2_authorize": { /* endpoint object */ },
+      "oauth2_revoke": { /* endpoint object */ },
+      "oauth2_introspect": { /* endpoint object */ },
+      "auth_token": { /* endpoint object */ },
+      "auth_authorize": { /* endpoint object */ }
+    },
+    "saml_sso_endpoints": {
+      "authorization_endpoint": { /* endpoint object */ },
+      "logout_endpoint": { /* endpoint object */ },
+      "slo_endpoint": { /* endpoint object */ }
+    },
+    "lightning_aura_endpoints": { /* endpoint objects */ },
+    "community_guest_endpoints": { /* endpoint objects */ },
+    "internal_api_endpoints": { /* endpoint objects */ }
+  },
+  "security_headers_analysis": {
+    "domain": {
+      "strict_transport_security": "string",
+      "content_security_policy": "string",
+      "content_security_policy_report_only": "string",
+      "x_content_type_options": "string",
+      "x_frame_options": "string",
+      "referrer_policy": "string | Missing",
+      "permissions_policy": "string | Missing",
+      "cross_origin_policies": "string | Missing",
+      "cookies": {
+        "cookie_name": {
+          "secure": "boolean",
+          "http_only": "boolean",
+          "same_site": "string | Missing",
+          "expiry": "string"
+        }
+      },
+      "vulnerability_indicators": ["string"],
+      "cvss": "float",
+      "finding_id": "string"
+    }
+  },
+  "link_header_leakage": {
+    "endpoint": "string",
+    "leaked_paths": ["string"],
+    "vulnerability_indicators": ["string"],
+    "cvss": "float",
+    "finding_id": "string"
+  },
+  "host_header_injection": {
+    "tested_endpoint": "string",
+    "tested_headers": ["string"],
+    "results": "string",
+    "vulnerability_indicators": ["string"]
+  },
+  "parameter_pollution": {
+    "tested_endpoint": "string",
+    "tested_payload": "string",
+    "result": "string",
+    "vulnerability_indicators": ["string"],
+    "high_value_targets": ["string"]
+  },
+  "content_type_confusion": {
+    "tested_endpoint": "string",
+    "tested_types": ["string"],
+    "results": "string",
+    "vulnerability_indicators": ["string"]
+  },
+  "xss_sink_analysis": {
+    "lightning_web_components": {
+      "sinks_identified": ["string"],
+      "csp_allows": ["string"],
+      "risk": "string"
+    },
+    "aura_components": {
+      "sinks_identified": ["string"],
+      "risk": "string"
+    },
+    "community_page": {
+      "csp_analysis": "string",
+      "inline_scripts_found": ["string"],
+      "risk": "string"
+    }
+  },
+  "deserialization_vectors": [
+    {
+      "endpoint": "string",
+      "parameter": "string",
+      "risk": "string",
+      "notes": "string"
+    }
+  ],
+  "source_sink_trace_summary": {
+    "user_input_sources": ["string"],
+    "dangerous_sinks": [
+      {
+        "sink": "string",
+        "location": "string",
+        "risk": "string"
+      }
+    ],
+    "taint_flow_paths": ["string"]
+  },
+  "api_versions_catalog": [
+    {
+      "version": "string",
+      "label": "string",
+      "year": "integer",
+      "risk": "string"
+    }
+  ],
+  "recommended_exploitation_paths": [
+    {
+      "id": "string",
+      "name": "string",
+      "steps": ["string"],
+      "prerequisites": ["string"],
+      "impact": "string"
+    }
+  ],
+  "files_referenced": ["string"]
+}
+```
+
+---
+
+## Endpoint Object Template
+
+```json
+{
+  "path": "string",
+  "method": "string",
+  "status": "integer",
+  "auth_required": "boolean",
+  "response": "string",
+  "parameters": ["string"],
+  "tested_payloads": ["string"],
+  "vulnerability_indicators": ["string"],
+  "cvss_if_auth_bypass": "float (optional)",
+  "host_header_injection_testable": "boolean (optional)",
+  "content_type_confusion_testable": "boolean (optional)"
+}
+```
+
+---
+
+## Example: SOQL Query Endpoint
+
+```json
+"soql_query": {
+  "path": "/tw/services/data/v{version}/query/",
+  "method": "GET",
+  "status": 401,
+  "auth_required": true,
+  "parameters": ["q (SOQL query string)"],
+  "tested_payloads": [
+    "SELECT Id FROM Account LIMIT 1",
+    "SELECT Id FROM Account WHERE Name LIKE '%' OR 1=1--",
+    "SELECT Id,Username FROM User",
+    "SELECT Id FROM Account UNION SELECT Id FROM User"
+  ],
+  "response": "INVALID_SESSION_ID",
+  "vulnerability_indicators": [
+    "SOQL injection vector in 'q' parameter",
+    "UNION injection possible if auth bypassed",
+    "Always-true condition bypass (OR 1=1)",
+    "User object enumeration if query for credential harvesting"
+  ],
+  "cvss_if_auth_bypass": 8.6
+}
+```
+
+---
+
+## Notes for Future Sessions
+
+1. **Always test all API versions** — older versions (pre-2020) often have weaker validation
+2. **Auth bypass is the key** — most high-impact vectors are gated behind 401; focus on bypass first
+3. **SAML/JWT bearer grants** — highest deserialization risk, test thoroughly
+4. **CSP analysis** — check both enforce and report-only modes; `unsafe-inline`/`unsafe-eval` enable XSS
+5. **Cookie flags** — missing HttpOnly + SameSite on session cookies = session theft via XSS
+6. **Link headers** — always check for framework path leakage
+7. **Internal ports** — redirects to non-standard ports (8443) indicate internal infrastructure
+8. **Parameter pollution** — test duplicate params on OAuth endpoints specifically
+9. **Content-Type confusion** — test XML/JSON/multipart on all POST endpoints
+10. **Document taint flows** — source → sink traces enable exploit chain construction
