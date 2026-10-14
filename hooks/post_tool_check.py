@@ -3,7 +3,7 @@
 
 If a HUNT-OS tool's response text contains a strong-claim marker (PROVEN,
 EXPLOITABLE, or "admin takeover"), the text is piped to the adjacent
-claim_gate.py (a byte-for-byte copy made by scripts/build_plugin.py). Exit 2
+scripts/claim_gate.py (the packaged gate, byte-identical to app/src/huntos/_data/bin/claim_gate.py). Exit 2
 with the gate's stderr on veto; exit 0 otherwise.
 
 Fail-closed on a claim: if the gate cannot run, the claim is vetoed.
@@ -20,7 +20,7 @@ from pathlib import Path
 
 PREFIX = "mcp__hunter-os__"
 MARKER = re.compile(r"\bPROVEN\b|\bEXPLOITABLE\b|\badmin takeover\b", re.IGNORECASE)
-GATE = Path(__file__).resolve().parent / "claim_gate.py"
+GATE = Path(__file__).resolve().parent.parent / "scripts" / "claim_gate.py"
 
 
 def _response_text(payload: dict) -> str:

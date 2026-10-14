@@ -7,7 +7,7 @@ returned as tool results with isError=true, never as JSON-RPC protocol errors.
 
 Command resolution, in order:
   1. HUNT_CLI env: a command prefix, split with shlex.
-  2. repo app/src exists (plugins/hunter-os/mcp/../../../app/src):
+  2. repo app/src exists (mcp/../app/src):
      [sys.executable, "-m", "huntos"] with PYTHONPATH set to app/src.
   3. ["hunt"] from PATH.
 
@@ -44,9 +44,9 @@ def _log(msg: str) -> None:
 
 
 def _app_dir() -> Path:
-    # server.py lives at <repo>/plugins/hunter-os/mcp/server.py
+    # server.py lives at <repo>/mcp/server.py
     here = Path(__file__).resolve()
-    return here.parents[3] / "app"
+    return here.parents[1] / "app"
 
 
 def _app_src() -> Path:

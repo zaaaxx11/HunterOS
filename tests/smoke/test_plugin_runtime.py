@@ -14,7 +14,7 @@ import sys
 import pytest
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-PLUGIN = REPO / "plugins" / "hunter-os"
+PLUGIN = REPO
 
 
 def _load(name: str, path: pathlib.Path):
@@ -54,7 +54,7 @@ def test_manifest_version_matches_package_and_paths_exist():
     manifest = json.loads((PLUGIN / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     pyproject = (REPO / "app" / "pyproject.toml").read_text(encoding="utf-8")
     assert f'version = "{manifest["version"]}"' in pyproject
-    assert manifest["name"] == "hunter-os"
+    assert manifest["name"] == "hunt-os"
     for key in ("skills", "commands"):
         assert (PLUGIN / manifest[key].removeprefix("./")).is_dir(), key
     assert (PLUGIN / "hooks" / "hooks.json").is_file()
@@ -62,7 +62,7 @@ def test_manifest_version_matches_package_and_paths_exist():
 
 def test_marketplace_points_at_plugin_root():
     market = json.loads((REPO / "marketplace.json").read_text(encoding="utf-8"))
-    entry = next(p for p in market["plugins"] if p["name"] == "hunter-os")
+    entry = next(p for p in market["plugins"] if p["name"] == "hunt-os")
     assert (REPO / entry["source"]).resolve() == PLUGIN.resolve()
 
 

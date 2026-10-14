@@ -9,7 +9,7 @@ import pathlib
 import re
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-PLUGIN = REPO / "plugins" / "hunter-os"
+PLUGIN = REPO
 
 
 def _json(path: pathlib.Path) -> dict:
@@ -18,7 +18,7 @@ def _json(path: pathlib.Path) -> dict:
 
 def test_plugin_manifest_is_valid_and_named():
     manifest = _json(PLUGIN / ".claude-plugin" / "plugin.json")
-    assert manifest["name"] == "hunter-os"
+    assert manifest["name"] == "hunt-os"
     assert manifest["version"]
 
 
@@ -40,7 +40,7 @@ def test_declared_skill_and_command_paths_exist():
 
 def test_marketplace_source_resolves_to_plugin_root():
     market = _json(REPO / "marketplace.json")
-    entry = next(p for p in market["plugins"] if p["name"] == "hunter-os")
+    entry = next(p for p in market["plugins"] if p["name"] == "hunt-os")
     assert (REPO / entry["source"]).resolve() == PLUGIN.resolve()
     assert _json(REPO / ".claude-plugin" / "marketplace.json") == market
 

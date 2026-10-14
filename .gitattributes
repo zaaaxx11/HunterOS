@@ -2,6 +2,11 @@
 # installed hook pack (hunt-os/hooks/), where CRLF would break /bin/sh.
 *.sh text eol=lf
 # Generated plugin tree and marketplace are byte-compared by scripts/build_plugin.py --check.
-plugins/hunter-os/** text eol=lf
+skills/hunt-os/** text eol=lf
+commands/** text eol=lf
+hooks/** text eol=lf
+mcp/** text eol=lf
+agents/** text eol=lf
+.claude-plugin/** text eol=lf
 marketplace.json text eol=lf
 .claude-plugin/marketplace.json text eol=lf

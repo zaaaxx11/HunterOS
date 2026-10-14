@@ -13,12 +13,12 @@ PreToolUse hook enforces the gates before a write runs.
 
 | Piece | Path | Role |
 | --- | --- | --- |
-| Manifest | `plugins/hunter-os/.claude-plugin/plugin.json` | Name and version (from `app/pyproject.toml`) |
-| Router skill | `plugins/hunter-os/skills/hunt-os/` | Generated from `huntos.installer.build_plan("router")` |
-| Commands | `plugins/hunter-os/commands/*.md` | `start`, `status`, `brief`, `finding`, `lead`, `verify`, `report`, `triage` |
-| Hooks | `plugins/hunter-os/hooks/` | SessionStart doctrine, PreToolUse gate, PostToolUse claim check |
-| MCP server | `plugins/hunter-os/mcp/server.py` | JSON-RPC over stdio, stdlib only, calls `hunt --json <verb>` |
-| Doctrine card | `plugins/hunter-os/always-on-rules.md` | Generated from `IDEA.md` and `HUNT-BRIDGE.md` |
+| Manifest | `.claude-plugin/plugin.json` | Name and version (from `app/pyproject.toml`) |
+| Router skill | `skills/hunt-os/` | Generated from `huntos.installer.build_plan("router")` |
+| Commands | `commands/*.md` | `start`, `status`, `brief`, `finding`, `lead`, `verify`, `report`, `triage` |
+| Hooks | `hooks/` | SessionStart doctrine, PreToolUse gate, PostToolUse claim check |
+| MCP server | `mcp/server.py` | JSON-RPC over stdio, stdlib only, calls `hunt --json <verb>` |
+| Doctrine card | `always-on-rules.md` | Generated from `IDEA.md` and `HUNT-BRIDGE.md` |
 
 The MCP server never writes SQLite directly. Every tool runs
 `hunt --json <verb>` as a subprocess with a list argv (no shell), so the CLI
@@ -30,8 +30,8 @@ MCP tool errors with the refusal text.
 Claude Code:
 
 ```text
-/plugin marketplace add zaaaxx11/Hunter
-/plugin install hunter-os@hunter-os-market
+/plugin marketplace add zaaaxx11/HunterOS
+/plugin install hunt-os@hunter-os
 ```
 
 ZCode: add the same marketplace source in the plugin settings and install

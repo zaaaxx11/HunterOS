@@ -25,7 +25,7 @@ LOCK_FILENAME = ".huntos-project"
 DEFAULT_DB = "~/.huntos/hunt.db"
 
 # Read-only MCP tool names (suffix after the server prefix). These never gate.
-# Must match the tool names registered by plugins/hunter-os/mcp/server.py.
+# Must match the tool names registered by mcp/server.py.
 READ_ONLY = frozenset({
     "hunt_status",
     "hunt_brief",
