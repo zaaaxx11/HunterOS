@@ -290,6 +290,17 @@ hunt install --adapter generic --dir /path/to/harness/skills
 
 Requires your own adapter executable implementing the `HUNT-ADAPTER/1` protocol ([spec](docs/HUNT-ADAPTER-1.md)). The bundled reference implementation (`examples/adapters/reference_jsonl.py`) demonstrates the protocol with deterministic simulation, not real agents.
 
+### Plugin Mode (Claude Code / ZCode)
+
+HunterOS also ships as a plugin with a router skill, slash commands, lifecycle hooks, and an MCP server that wraps the `hunt` CLI:
+
+```text
+/plugin marketplace add zaaaxx11/Hunter
+/plugin install hunter-os@hunter-os-market
+```
+
+See [docs/PLUGIN.md](docs/PLUGIN.md) for gates, environment switches, and what is verified automatically versus manually.
+
 ---
 
 ## Safety & Authorization

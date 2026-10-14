@@ -281,6 +281,37 @@ jobs:
             echo "artifact smoke OK: $(basename "$artifact")"
           done
 
+      - name: Plugin surface contract and generator drift
+        run: |
+          set -e
+          python scripts/build_plugin.py --check
+          PYTHONPATH=app/src python -m pytest tests/smoke/test_plugin_surface.py -q
+
+      - name: Plugin scripts compile
+        run: |
+          set -e
+          python -m py_compile plugins/hunter-os/hooks/*.py plugins/hunter-os/mcp/server.py scripts/build_plugin.py
+
+      - name: Plugin MCP stdio smoke (initialize, tools/list, tools/call on temp ledger)
+        run: |
+          set -e
+          db="$(mktemp -d)/hunt.db"
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"hunt_status","arguments":{}}}' \
+            | HUNT_DB="$db" PYTHONPATH="$PWD/app/src" python plugins/hunter-os/mcp/server.py \
+            | python -c '
+          import json, sys
+          replies = [json.loads(line) for line in sys.stdin if line.strip()]
+          assert len(replies) == 3, replies
+          assert replies[0]["result"]["protocolVersion"] == "2024-11-05"
+          assert any(t["name"] == "hunt_status" for t in replies[1]["result"]["tools"])
+          assert replies[2]["result"]["isError"] is False, replies[2]
+          print("plugin MCP smoke OK")
+          '
+
       - name: Zero-dependency guarantee (product is stdlib-only)
         run: |
           set -e

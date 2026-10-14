@@ -1,0 +1,166 @@
+# PREDATOR-RECON CONFIG TEMPLATE
+# Copy to ~/.config/predator-recon/config.yaml and customize
+
+# =============================================================================
+# CALCULUS THRESHOLDS
+# Every tool run must pass: Value > Cost + Risk + Irreversibility
+# =============================================================================
+calculus:
+  min_value_usd: 1000           # Skip targets below this bounty/impact
+  max_cost_minutes: 30          # Skip tools taking longer
+  max_risk_score: 7             # 1-10, skip if higher
+  require_clean_exit: true      # Must have rollback path
+  min_clean_score: 6            # 1-10, exit cleanliness
+
+# =============================================================================
+# TOOL LIMITS
+# =============================================================================
+tool_limits:
+  nuclei_rate_limit: 100
+  httpx_threads: 50
+  katana_depth: 3
+  gau_timeout: 30
+  sqlmap_threads: 5
+  dalfox_workers: 100
+  ffuf_threads: 50
+  puredns_rate_limit: 10000
+
+# =============================================================================
+# PHASE GATES
+# Auto-skip phases based on Calculus
+# =============================================================================
+phase_gates:
+  phase1_subdomain:
+    enabled: true
+    run_active_bruteforce: false  # Only if Calculus says yes
+    min_passive_subs: 50
+
+  phase2_urls:
+    enabled: true
+    max_urls_per_target: 5000
+    filter_live_only: true
+
+  phase3_js:
+    enabled: true
+    max_js_files: 200
+
+  phase3_vuln:
+    enabled: true
+    max_params_per_target: 500
+    run_sqli: true
+    run_xss: true
+    run_ssti: true
+    run_cors: true
+    run_redirect: true
+    run_ssrf: true
+
+  phase4_infra:
+    enabled: true
+    port_scan_top_ports: 1000
+    check_ssl: true
+    check_cloud_metadata: true
+
+  phase5_onchain:
+    enabled: true
+    max_contracts: 20
+    storage_slots: 50
+    simulate_before_exploit: true
+
+# =============================================================================
+# DEEP MODE TRIGGERS
+# =============================================================================
+deep_mode:
+  trigger_attempts: 3           # Auto-trigger after N failed vectors
+  simulate_best_worst_adversarial: true
+  pre_commit_decisions: true
+  abort_on_gas_spike: 2.0       # Gas > 2x estimate = abort
+
+# =============================================================================
+# TROJAN MODE TRIGGERS
+# =============================================================================
+trojan_mode:
+  trigger_after_failed_vectors: 3
+  auto_analyze_gatekeepers: true
+  min_visible_value_score: 6    # 1-10, must provide genuine value
+  require_rollback_test: true
+
+# =============================================================================
+# ANTI-DELUSION
+# =============================================================================
+anti_delusion:
+  blind_spot_check_after_phase: true
+  flag_confirmation_bias: true
+  flag_sunk_cost: true
+  flag_narrative_fallacy: true
+  flag_false_urgency: true
+  flag_ego_escalation: true
+  flag_assumption_as_fact: true
+  flag_fabricated_evidence: true
+  flag_unverified_success: true
+  flag_complexity_hiding_uncertainty: true
+
+# =============================================================================
+# OUTPUT
+# =============================================================================
+output:
+  structured_json: true
+  keep_raw_logs: false
+  assumptions_log: true
+  evidence_screenshots: true
+  tx_hash_verification: true
+
+# =============================================================================
+# TARGETS
+# targets.yaml format:
+# - domain: "target.com"
+#   chain: "ethereum"
+#   chain_id: 1
+#   rpc_url: "https://eth-mainnet.g.alchemy.com/v2/xxx"
+#   contracts:
+#     - "0x123..."
+#     - "0x456..."
+#   bounty_max: 50000
+#   priority: 1
+#   calculus:
+#     value: 50000
+#     cost: 15
+#     risk: 3
+#     clean: true
+#     fallback: "Trojan Mode"
+# =============================================================================
+
+# =============================================================================
+# API KEYS (Env vars preferred)
+# =============================================================================
+api_keys:
+  github_token: "${GITHUB_TOKEN}"
+  shodan_key: "${SHODAN_API_KEY}"
+  censys_uid: "${CENSYS_UID}"
+  censys_secret: "${CENSYS_SECRET}"
+  binaryedge_key: "${BINARYEDGE_KEY}"
+  securitytrails_key: "${SECURITYTRAILS_KEY}"
+  xss_server: "${XSS_SERVER_URL}"
+
+# =============================================================================
+# RPC ENDPOINTS
+# =============================================================================
+rpc:
+  ethereum: "https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}"
+  arbitrum: "https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}"
+  optimism: "https://opt-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}"
+  base: "https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}"
+  polygon: "https://polygon-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}"
+  bsc: "https://bsc-dataseed.binance.org"
+  avalanche: "https://api.avax.network/ext/bc/C/rpc"
+  fantom: "https://rpc.ftm.tools"
+  sei: "https://evm-rpc.sei-apis.com"
+  linea: "https://rpc.linea.build"
+  scroll: "https://rpc.scroll.io"
+  zksync: "https://mainnet.era.zksync.io"
+  linea: "https://rpc.linea.build"
+  mode: "https://mainnet.mode.network"
+  blast: "https://rpc.blast.io"
+  mantle: "https://rpc.mantle.xyz"
+  sonic: "https://rpc.soniclabs.com"
+  berachain: "https://rpc.berachain.com"
+  hyperliquid: "https://rpc.hyperliquid.xyz/evm"
