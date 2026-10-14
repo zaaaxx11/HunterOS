@@ -130,10 +130,10 @@ def generate(out_root: Path) -> dict[str, bytes]:
     for rel, data, _src, _sha in build_plan_payload():
         if not rel.startswith("hunt-os/"):
             raise SystemExit(f"build_plugin: unexpected plan path {rel!r}")
-        files[f"{plugin}/skills/hunt-os/{rel[len('hunt-os/'):]}"] = data
+        files[f"{plugin}/skills/hunt-os/{rel[len('hunt-os/'):]}"] = norm_checkout(data)
 
     # 2. Claim gate copied byte-for-byte (sha256 recorded in the plan too).
-    gate_bytes = CLAIM_GATE_SRC.read_bytes()
+    gate_bytes = norm_checkout(CLAIM_GATE_SRC.read_bytes())
     files[f"{plugin}/hooks/claim_gate.py"] = gate_bytes
 
     # 3. Always-on rules.
