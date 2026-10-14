@@ -1,3 +1,7 @@
 # Shell hooks must stay LF: the installer byte-copies them into the
 # installed hook pack (hunt-os/hooks/), where CRLF would break /bin/sh.
 *.sh text eol=lf
+# Generated plugin tree and marketplace are byte-compared by scripts/build_plugin.py --check.
+plugins/hunter-os/** text eol=lf
+marketplace.json text eol=lf
+.claude-plugin/marketplace.json text eol=lf

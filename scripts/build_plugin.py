@@ -154,6 +154,11 @@ def write_tree(files: dict[str, bytes], root: Path) -> None:
         dest.write_bytes(data)
 
 
+def norm_checkout(data: bytes) -> bytes:
+    """Undo core.autocrlf checkouts so the drift check is OS-independent."""
+    return data.replace(b"\r\n", b"\n")
+
+
 def committed_files(root: Path) -> dict[str, bytes]:
     """The committed files this generator owns (stale files under owned prefixes count as drift)."""
     out: dict[str, bytes] = {}
@@ -164,11 +169,11 @@ def committed_files(root: Path) -> dict[str, bytes]:
                 continue
             rel = path.relative_to(base).as_posix()
             if rel.startswith(GENERATED_PREFIXES) or rel in GENERATED_PREFIXES:
-                out[f"{PLUGIN_REL.as_posix()}/{rel}"] = path.read_bytes()
+                out[f"{PLUGIN_REL.as_posix()}/{rel}"] = norm_checkout(path.read_bytes())
     for mk in MARKET_FILES:
         rel = mk.relative_to(REPO).as_posix()
         if mk.exists():
-            out[rel] = mk.read_bytes()
+            out[rel] = norm_checkout(mk.read_bytes())
     return out
 
 
