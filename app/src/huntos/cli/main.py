@@ -44,6 +44,14 @@ Commands:
   hunt wave close --wave-id N --verdict <continue|exhausted|pivot>   # findings_new is computed from wave-linked findings
   hunt wave reaudit --wave-id N --summary "..."   # min 20 chars; confirmed/overturned counted from the DB
   hunt wave budget --wave-id N [--set M --reason "..."]   # show or change a wave's iteration budget
+  hunt followup add <finding_id> <title> [--kind escalation|variant|adjacent-surface|chain-step]
+                                             # [--hypothesis "..."] — an implication the finding
+                                             # leaves untested, as a tracked object
+  hunt followup list [--finding N] [--target N] [--state open|verified|dropped|promoted]
+  hunt followup verify <id> --evidence "..."   # tested and held
+  hunt followup drop <id> --reason "..."       # min 20 chars; dropping is a decision, not a silence
+  hunt followup promote <id> --klass K [--severity S] [--roe-action read|mutate|...]
+                                             # becomes its own finding, linked back to its parent
   hunt report <target_id> [--out report.md]   # --out also logs the disclosure_report artifact
   hunt verify-report <file>                  # recompute the report body's sha256 and compare
                                              # against the hunt-report footer (BLOCKED on
@@ -578,6 +586,49 @@ def cmd_wave(args, conn) -> int:
         print(f"wave #{args.wave_id} iteration budget set to {state['budget']} "
               f"(used={state['used']}) reason: {args.reason}")
         _show_receipt(f"wave #{args.wave_id} budget={state['budget']}", "hunt status")
+    return 0
+
+
+def cmd_followup(args, conn) -> int:
+    """`hunt followup ...`: a finding's untested implications as ledger objects."""
+    if args.action == "add":
+        fid = db.add_followup(conn, args.finding_id, args.title,
+                              kind=args.kind, hypothesis=args.hypothesis)
+        print(f"follow-up #{fid} added to finding #{args.finding_id} "
+              f"[{args.kind}] {args.title}")
+        _show_receipt(f"follow-up #{fid} on finding #{args.finding_id}",
+                      f"hunt followup list --finding {args.finding_id}")
+    elif args.action == "list":
+        rows = db.list_followups(conn, finding_id=args.finding_id,
+                                 target_id=args.target_id, state=args.state)
+        if not rows:
+            print("no follow-ups match")
+            return 0
+        for r in rows:
+            line = (f"#{r['id']} [{r['kind']}] {r['state']} "
+                    f"parent=F-{r['parent_finding_id']} {r['title']}")
+            if r["state"] == "dropped" and r["drop_reason"]:
+                line += f" — dropped: {r['drop_reason']}"
+            if r["state"] == "promoted" and r["promoted_finding_id"]:
+                line += f" — promoted to finding #{r['promoted_finding_id']}"
+            print(line)
+        open_n = sum(1 for r in rows if r["state"] == "open")
+        print(f"({len(rows)} follow-up(s), {open_n} open)")
+    elif args.action == "verify":
+        db.verify_followup(conn, args.followup_id, args.evidence)
+        print(f"follow-up #{args.followup_id} verified: {args.evidence}")
+        _show_receipt(f"verified follow-up #{args.followup_id}", "hunt status")
+    elif args.action == "drop":
+        db.drop_followup(conn, args.followup_id, args.reason)
+        print(f"follow-up #{args.followup_id} dropped: {args.reason}")
+        _show_receipt(f"dropped follow-up #{args.followup_id}", "hunt status")
+    elif args.action == "promote":
+        child = db.promote_followup(conn, args.followup_id, args.klass,
+                                    args.severity, action=args.roe_action)
+        print(f"follow-up #{args.followup_id} promoted to finding #{child} "
+              f"[{args.severity}] {args.klass}")
+        _show_receipt(f"finding #{child} from follow-up #{args.followup_id}",
+                      f"hunt finding promote --id {child} --evidence-ref ... --poc-path ...")
     return 0
 
 
@@ -2121,6 +2172,52 @@ def main(argv=None) -> int:
     pwb.add_argument("--reason", default="",
                      help="why the budget changes (required with --set)")
     pwb.set_defaults(fn=cmd_wave)
+
+    pfu = sub.add_parser("followup", help="a finding's untested implications: add / list / "
+                                          "verify / drop / promote")
+    pfu_sub = pfu.add_subparsers(dest="action", required=True)
+
+    pfua = pfu_sub.add_parser("add", help="register a follow-up a finding implies")
+    pfua.add_argument("finding_id", type=int)
+    pfua.add_argument("title")
+    pfua.add_argument("--kind", choices=["escalation", "variant",
+                                         "adjacent-surface", "chain-step"],
+                      default="escalation")
+    pfua.add_argument("--hypothesis", default="",
+                      help="what you expect to be true, stated so it can fail")
+    pfua.set_defaults(fn=cmd_followup)
+
+    pful = pfu_sub.add_parser("list", help="list follow-ups (by finding, target, or state)")
+    pful.add_argument("--finding", dest="finding_id", type=int, default=None)
+    pful.add_argument("--target", dest="target_id", type=int, default=None)
+    pful.add_argument("--state", choices=["open", "verified", "dropped", "promoted"],
+                      default=None)
+    pful.set_defaults(fn=cmd_followup)
+
+    pfuv = pfu_sub.add_parser("verify", help="close a follow-up as verified (evidence required)")
+    pfuv.add_argument("followup_id", type=int)
+    pfuv.add_argument("--evidence", required=True,
+                      help="the observation that settled it")
+    pfuv.set_defaults(fn=cmd_followup)
+
+    pfud = pfu_sub.add_parser("drop", help="close a follow-up as dropped (reason required)")
+    pfud.add_argument("followup_id", type=int)
+    pfud.add_argument("--reason", required=True,
+                      help="what was tried and what ruled it out (min 20 chars)")
+    pfud.set_defaults(fn=cmd_followup)
+
+    pfup = pfu_sub.add_parser("promote", help="turn a follow-up into its own finding")
+    pfup.add_argument("followup_id", type=int)
+    pfup.add_argument("--klass", required=True)
+    pfup.add_argument("--severity", choices=["critical", "high", "medium", "low", "info"],
+                      default="info")
+    # E22 class: `--action` must NOT use dest="action" — the subparser already
+    # owns that dest, and a flag claiming it silently overwrites the subcommand
+    # (so `followup promote` would run the `read` branch).
+    pfup.add_argument("--roe-action", dest="roe_action",
+                      choices=["recon", "read", "auth-test", "mutate"],
+                      default="read")
+    pfup.set_defaults(fn=cmd_followup)
 
     pr = sub.add_parser("report", help="generate the target's disclosure report (markdown, "
                                        "sha256-fingerprinted; --out also stamps the artifact)")

@@ -37,6 +37,9 @@ DEFAULT_DB = "~/.huntos/hunt.db"
 NEIGHBORHOOD = 80  # chars of context around a marker where an id may live
 PASS_LINE = "claim gate: no unbacked claims"
 _LOCK_FILENAME = ".huntos-project"  # written by `hunt project bind`
+# A parent chain deeper than this is treated as unverifiable rather than
+# walked: the gate stays O(depth) and a corrupt lineage cannot spin it.
+_MAX_CHAIN_DEPTH = 32
 
 # PROVEN / EXPLOITABLE are exact, case-sensitive tokens; the takeover phrase
 # is not. Word boundaries keep ordinary prose ("unproven", "nonexploitable",
@@ -290,7 +293,11 @@ def vet(conn: sqlite3.Connection,
         finding's, exactly in the case that matters most).
     An unbound claim (no explicit bind, no finding id nearby) is a veto,
     always: proof of some other finding somewhere in the db backs a claim that
-    names nothing — the db decides which findings are proven."""
+    names nothing — the db decides which findings are proven.
+
+    A chained finding (one born from another finding's follow-up) carries the
+    same rule one level up: its claim rides its own proven-live row AND every
+    ancestor's, because a chain is only as strong as the link below it."""
     for marker, fid, lid in found:
         if lid is not None:
             row = conn.execute(
@@ -320,6 +327,13 @@ def vet(conn: sqlite3.Connection,
                 "SELECT ladder_status FROM findings WHERE id = ?", (fid,)
             ).fetchone()
             if row is not None and row["ladder_status"] == "proven-live":
+                # The finding's own row backs the claim. A chained finding must
+                # ALSO have every ancestor proven-live: a chain claim resting on
+                # an overturned or merely theoretical parent is the same lie in
+                # a longer sentence.
+                ancestor_msg = _unproven_ancestor(conn, fid)
+                if ancestor_msg is not None:
+                    return ancestor_msg
                 continue  # backed; keep checking the remaining claims
             status = row["ladder_status"] if row is not None else "not found"
             return (
@@ -332,6 +346,51 @@ def vet(conn: sqlite3.Connection,
             "PROVEN[F-<n>] or PROVEN[L-<n>] (the db decides which claims are proven)"
         )
     return None
+
+
+def _unproven_ancestor(conn: sqlite3.Connection, finding_id: int) -> "str | None":
+    """Walk the parent_finding_id chain; BLOCKED text for the first weak link.
+
+    Bounded: the loop is capped at _MAX_CHAIN_DEPTH so a corrupt or cyclic
+    lineage cannot spin the gate. A missing ancestor row is treated as weak
+    (fail closed), never as absent.
+    """
+    seen: set[int] = set()
+    current = finding_id
+    for _ in range(_MAX_CHAIN_DEPTH):
+        if current in seen:
+            return (
+                f"BLOCKED: finding #{finding_id} has a cyclic parent chain — "
+                f"the lineage cannot be verified, so its claim cannot pass"
+            )
+        seen.add(current)
+        row = conn.execute(
+            "SELECT parent_finding_id, ladder_status FROM findings WHERE id = ?",
+            (current,),
+        ).fetchone()
+        if row is None:
+            return (
+                f"BLOCKED: finding #{finding_id} chains to #{current}, which does "
+                f"not exist — a chain claim cannot rest on a missing row"
+            )
+        parent = row["parent_finding_id"]
+        if parent is None:
+            return None  # reached the root with every link proven-live
+        prow = conn.execute(
+            "SELECT ladder_status FROM findings WHERE id = ?", (parent,)
+        ).fetchone()
+        pstatus = prow["ladder_status"] if prow is not None else "not found"
+        if pstatus != "proven-live":
+            return (
+                f"BLOCKED: engine claimed PROVEN for finding #{finding_id} but its "
+                f"parent #{parent} is '{pstatus}' — a chained claim rides its "
+                f"ancestors too (hunt finding promote ... / overturn trail)"
+            )
+        current = parent
+    return (
+        f"BLOCKED: finding #{finding_id}'s parent chain exceeds "
+        f"{_MAX_CHAIN_DEPTH} links — verify the lineage before claiming it"
+    )
 
 
 def main() -> int:

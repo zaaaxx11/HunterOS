@@ -142,6 +142,30 @@ CREATE TABLE IF NOT EXISTS waves (
     CHECK (iterations_used >= 0)
 );
 
+CREATE TABLE IF NOT EXISTS followups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    parent_finding_id INTEGER NOT NULL REFERENCES findings(id),
+    target_id INTEGER NOT NULL REFERENCES targets(id),
+    title TEXT NOT NULL,
+    hypothesis TEXT DEFAULT '',
+    -- What kind of follow-up this is. 'escalation' = the same bug, worse
+    -- impact; 'variant' = the same class on another surface; 'adjacent-surface'
+    -- = a different surface the finding exposed; 'chain-step' = the next link
+    -- in an exploit chain.
+    kind TEXT NOT NULL DEFAULT 'escalation'
+        CHECK (kind IN ('escalation','variant','adjacent-surface','chain-step')),
+    state TEXT NOT NULL DEFAULT 'open'
+        CHECK (state IN ('open','verified','dropped','promoted')),
+    promoted_finding_id INTEGER,               -- set when it becomes a finding
+    drop_reason TEXT DEFAULT '',               -- required when dropped
+    created_at TEXT DEFAULT (datetime('now')),
+    closed_at TEXT,
+    UNIQUE (parent_finding_id, title)
+);
+
+CREATE INDEX IF NOT EXISTS idx_followups_parent ON followups(parent_finding_id);
+CREATE INDEX IF NOT EXISTS idx_followups_target_state ON followups(target_id, state);
+
 CREATE TABLE IF NOT EXISTS lessons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_target TEXT NOT NULL,
@@ -574,6 +598,16 @@ def connect(db_path: Optional[str] = None) -> sqlite3.Connection:
                     conn.execute(ddl)
                 except sqlite3.Error:
                     pass
+        # Follow-up migration (guarded, idempotent): the finding->finding
+        # lineage edge. A legacy finding reads NULL (no recorded parent).
+        if "parent_finding_id" not in cols:
+            try:
+                conn.execute(
+                    "ALTER TABLE findings ADD COLUMN parent_finding_id INTEGER "
+                    "REFERENCES findings(id)"
+                )
+            except sqlite3.Error:
+                pass
         lead_cols = {r[1] for r in conn.execute("PRAGMA table_info(leads)").fetchall()}
         if "surface_id" not in lead_cols:
             try:
@@ -1006,6 +1040,10 @@ def promote_finding(conn: sqlite3.Connection, finding_id: int, evidence_ref: str
     row = _row(conn, "SELECT * FROM findings WHERE id = ?", (finding_id,),
                label=f"finding #{finding_id}")
     _require_active_target(conn, row["target_id"])
+    # A finding cannot climb while it still has open follow-ups: the parent's
+    # implications are part of its evidence, and closing over them silently is
+    # how a chain gets reported as settled when half of it was never tested.
+    require_no_open_followups(conn, finding_id, "be promoted")
     status = row["ladder_status"]
     if status == "overturned":
         raise ValueError("overturned findings cannot be promoted")
@@ -1176,6 +1214,10 @@ def overturn_finding(conn: sqlite3.Connection, finding_id: int, overturned_by: s
     row = _row(conn, "SELECT * FROM findings WHERE id = ?", (finding_id,),
                label=f"finding #{finding_id}")
     _require_active_target(conn, row["target_id"])
+    # Overturning is terminal for the finding, but its open follow-ups are
+    # still live work: each must be settled (verified, dropped, or promoted
+    # into its own finding) before the parent is declared dead.
+    require_no_open_followups(conn, finding_id, "be overturned")
     conn.execute("UPDATE findings SET ladder_status='overturned', overturned_by=? WHERE id=?", (overturned_by, finding_id))
     log_event(conn, row["target_id"], "finding_overturned", f"#{finding_id} by {overturned_by}")
     conn.commit()
@@ -1854,6 +1896,197 @@ def promote_lead(conn: sqlite3.Connection, lead_id: int, klass: str,
         # Crash/gate-failure mid-promote: roll the partial birth back so no
         # orphan finding (lead_id NULL) can survive and the lead stays
         # promotable for a clean retry.
+        conn.rollback()
+        raise
+    conn.commit()
+    return finding_id
+
+
+FOLLOWUP_KINDS = ("escalation", "variant", "adjacent-surface", "chain-step")
+FOLLOWUP_STATES = ("open", "verified", "dropped", "promoted")
+MIN_DROP_REASON = 20  # same bar as a wave re-audit summary
+
+
+def add_followup(conn: sqlite3.Connection, parent_finding_id: int, title: str,
+                 kind: str = "escalation", hypothesis: str = "") -> int:
+    """Register a follow-up a finding implies but has not tested.
+
+    A finding is raw material; the implications it leaves untested are the
+    work that gets forgotten. This mints them as bounded objects at finding
+    time instead of leaving them in the operator's head.
+    """
+    if kind not in FOLLOWUP_KINDS:
+        raise ValueError(
+            f"BLOCKED: follow-up kind must be one of {list(FOLLOWUP_KINDS)}; got {kind!r}"
+        )
+    if not title or not title.strip():
+        raise ValueError("BLOCKED: a follow-up needs a title")
+    parent = _row(conn, "SELECT * FROM findings WHERE id = ?", (parent_finding_id,),
+                  label=f"finding #{parent_finding_id}")
+    _require_active_target(conn, parent["target_id"])
+    title = redact(title)
+    hypothesis = redact(hypothesis)
+    assert_no_secrets(title, "follow-up title")
+    assert_no_secrets(hypothesis, "follow-up hypothesis")
+    cur = conn.execute(
+        "INSERT INTO followups (parent_finding_id, target_id, title, hypothesis, kind) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (parent_finding_id, parent["target_id"], title.strip(), hypothesis.strip(), kind),
+    )
+    log_event(conn, parent["target_id"], "followup_added",
+              f"finding #{parent_finding_id} -> follow-up [{kind}] {title.strip()}",
+              finding_id=parent_finding_id)
+    conn.commit()
+    return int(cur.lastrowid)
+
+
+def list_followups(conn: sqlite3.Connection, finding_id: "int | None" = None,
+                   target_id: "int | None" = None,
+                   state: "str | None" = None) -> list:
+    """Follow-ups, newest first. Filter by parent finding, target, or state."""
+    sql = "SELECT * FROM followups WHERE 1=1"
+    args: list = []
+    if finding_id is not None:
+        sql += " AND parent_finding_id=?"
+        args.append(finding_id)
+    if target_id is not None:
+        sql += " AND target_id=?"
+        args.append(target_id)
+    if state is not None:
+        sql += " AND state=?"
+        args.append(state)
+    sql += " ORDER BY id DESC"
+    return [dict(r) for r in conn.execute(sql, tuple(args)).fetchall()]
+
+
+def open_followups(conn: sqlite3.Connection, finding_id: int) -> list:
+    """The parent's unresolved follow-ups (the close gate reads this)."""
+    return list_followups(conn, finding_id=finding_id, state="open")
+
+
+def require_no_open_followups(conn: sqlite3.Connection, finding_id: int,
+                              action: str) -> None:
+    """A finding cannot reach a terminal state while follow-ups are open.
+
+    Each one must be verified through the ladder, promoted into its own
+    finding, or explicitly dropped with a recorded reason — the same shape as
+    the existing rule that a one-sided lead kill is refused and auto-parks
+    instead. `action` names the transition being attempted, for the message.
+    """
+    pending = open_followups(conn, finding_id)
+    if not pending:
+        return
+    listed = ", ".join(f"#{f['id']} ({f['kind']}: {f['title']})" for f in pending[:5])
+    more = f" ... and {len(pending) - 5} more" if len(pending) > 5 else ""
+    raise ValueError(
+        f"BLOCKED: finding #{finding_id} cannot {action} while it has "
+        f"{len(pending)} open follow-up(s): {listed}{more}. "
+        f"Verify each through the ladder, promote it, or drop it with a reason. "
+        f"| NEXT: hunt followup list --finding {finding_id}"
+    )
+
+
+def verify_followup(conn: sqlite3.Connection, followup_id: int,
+                    evidence: str) -> None:
+    """Close a follow-up as verified: its hypothesis was tested and held.
+
+    The evidence is the observation that settled it, recorded beside the
+    close — 'checked and it holds' is a claim like any other.
+    """
+    if not evidence or not evidence.strip():
+        raise ValueError(
+            "BLOCKED: verifying a follow-up requires the evidence that settled it"
+        )
+    row = _row(conn, "SELECT * FROM followups WHERE id = ?", (followup_id,),
+               label=f"follow-up #{followup_id}")
+    if row["state"] != "open":
+        raise ValueError(
+            f"BLOCKED: follow-up #{followup_id} is '{row['state']}' — only an open "
+            "follow-up can be verified"
+        )
+    _require_active_target(conn, row["target_id"])
+    evidence = redact(evidence.strip())
+    assert_no_secrets(evidence, "follow-up evidence")
+    conn.execute(
+        "UPDATE followups SET state='verified', closed_at=datetime('now') WHERE id=?",
+        (followup_id,),
+    )
+    log_event(conn, row["target_id"], "followup_verified",
+              f"follow-up #{followup_id} verified: {evidence}",
+              finding_id=row["parent_finding_id"])
+    conn.commit()
+
+
+def drop_followup(conn: sqlite3.Connection, followup_id: int, reason: str) -> None:
+    """Close a follow-up as dropped: tested and refuted, or deliberately not
+    worth chasing. The reason is required and recorded — dropping is a
+    decision, not a silence."""
+    if not reason or len(reason.strip()) < MIN_DROP_REASON:
+        raise ValueError(
+            f"BLOCKED: dropping a follow-up requires a real reason (min "
+            f"{MIN_DROP_REASON} chars) — what was tried, what ruled it out"
+        )
+    row = _row(conn, "SELECT * FROM followups WHERE id = ?", (followup_id,),
+               label=f"follow-up #{followup_id}")
+    if row["state"] != "open":
+        raise ValueError(
+            f"BLOCKED: follow-up #{followup_id} is '{row['state']}' — only an open "
+            "follow-up can be dropped"
+        )
+    _require_active_target(conn, row["target_id"])
+    reason = redact(reason.strip())
+    assert_no_secrets(reason, "follow-up drop reason")
+    conn.execute(
+        "UPDATE followups SET state='dropped', drop_reason=?, "
+        "closed_at=datetime('now') WHERE id=?",
+        (reason, followup_id),
+    )
+    log_event(conn, row["target_id"], "followup_dropped",
+              f"follow-up #{followup_id} dropped: {reason}",
+              finding_id=row["parent_finding_id"])
+    conn.commit()
+
+
+def promote_followup(conn: sqlite3.Connection, followup_id: int, klass: str,
+                     severity: str, action: str = "read") -> int:
+    """Turn a follow-up into its own finding, linked back to its parent.
+
+    The child is born through the existing add_finding gate (klass taxonomy,
+    severity, phase scoping, secrets) and records parent_finding_id, so a
+    chain becomes a graph of rows instead of a paragraph in a report.
+    """
+    row = _row(conn, "SELECT * FROM followups WHERE id = ?", (followup_id,),
+               label=f"follow-up #{followup_id}")
+    if row["state"] != "open":
+        raise ValueError(
+            f"BLOCKED: follow-up #{followup_id} is '{row['state']}' — only an open "
+            "follow-up can be promoted"
+        )
+    _require_active_target(conn, row["target_id"])
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        finding_id = add_finding(
+            conn, row["target_id"], row["title"], klass, severity,
+            notes=(f"follow-up #{followup_id} of finding "
+                   f"#{row['parent_finding_id']} ({row['kind']})"
+                   + (f": {row['hypothesis']}" if row["hypothesis"] else "")),
+            action=action,
+            commit=False,
+        )
+        conn.execute(
+            "UPDATE findings SET parent_finding_id=? WHERE id=?",
+            (row["parent_finding_id"], finding_id),
+        )
+        conn.execute(
+            "UPDATE followups SET state='promoted', promoted_finding_id=?, "
+            "closed_at=datetime('now') WHERE id=?",
+            (finding_id, followup_id),
+        )
+        log_event(conn, row["target_id"], "followup_promoted",
+                  f"follow-up #{followup_id} -> finding #{finding_id} "
+                  f"[{severity}] {klass}",
+                  finding_id=finding_id)
+    except BaseException:
         conn.rollback()
         raise
     conn.commit()
