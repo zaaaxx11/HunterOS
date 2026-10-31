@@ -57,7 +57,8 @@ with quotes if it contains spaces).
 ## Gates
 
 - Read-only tools (`hunt_status`, `hunt_brief`, `hunt_next`, `hunt_target_list`,
-  `hunt_lead_list`, `hunt_verify_report`) always pass the PreToolUse hook.
+  `hunt_lead_list`, `hunt_verify_report`, `hunt_followup_list`) always pass the
+  PreToolUse hook.
 - Write tools require an existing ledger file and a `.huntos-project` marker in
   the working directory. Without both, the write is blocked.
 - Any `mcp__hunter-os__*` tool that is not on the known list is blocked

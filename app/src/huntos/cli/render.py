@@ -154,6 +154,17 @@ def _exit_gate(conn, target: dict) -> tuple:
             (tid,),
         ).fetchone()
         if open_wave is not None:
+            # A spent budget makes "work" impossible, so the exit line must not
+            # advertise it — the verdict is the only legal way forward. Mirrors
+            # next_command's Row 9.5 in core/db.py.
+            try:
+                from ..core import db as _db
+                state = _db.wave_budget(conn, open_wave["id"])
+            except Exception:  # noqa: BLE001 — the block never raises
+                state = {"exhausted": False}
+            if state.get("exhausted"):
+                return ("close the wave — its iteration budget is spent",
+                        f"hunt wave close --wave-id {open_wave['id']} --verdict exhausted")
             return ("work or close the open wave",
                     f"hunt wave close --wave-id {open_wave['id']} --verdict exhausted")
         return ("open the next round with the brief", f"hunt brief {tid}")

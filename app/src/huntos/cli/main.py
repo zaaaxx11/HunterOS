@@ -422,6 +422,49 @@ def _surface_kwarg(surface_id) -> dict:
     return {"surface_id": surface_id} if surface_id is not None else {}
 
 
+# Follow-up suggestion after a promotion (R2-09). A finding that just climbed
+# the ladder has proven one thing; the atlas family it belongs to names the
+# shapes that usually come with it, and those shapes are the follow-ups that
+# used to be forgotten. Deterministic, read-only, printed — never recorded.
+# Kind rule (documented so the suggestion is reproducible): 'escalation' when
+# the family's variants name a privilege/role escalation path, else 'variant'
+# — a plain sibling shape is a variant, an escalation of what is already
+# proven is an escalation. Only the first 2 families are printed: enough to
+# start the next round, not a wall of text.
+_FOLLOWUP_KIND_HINTS = ("escalation", "privilege", "takeover", "role",
+                        "unauthorized", "bypass")
+
+
+def _suggest_followups(conn, finding_id: int) -> None:
+    """Print up to 2 atlas-derived follow-up suggestions for a finding.
+
+    Never raises and never writes: a missing atlas family (an operator-grown
+    klass) prints nothing rather than inventing a suggestion.
+    """
+    try:
+        row = conn.execute("SELECT klass FROM findings WHERE id=?",
+                           (finding_id,)).fetchone()
+        if row is None:
+            return
+        families = atlas.by_klass(row["klass"] or "")
+        if not families:
+            return
+        for fam in families[:2]:
+            variants = [v.lower() for v in (fam.get("variants") or [])]
+            kind = ("escalation" if any(
+                h in v for v in variants for h in _FOLLOWUP_KIND_HINTS)
+                else "variant")
+            summary = (fam.get("summary") or "").strip()
+            if len(summary) > 80:
+                summary = summary[:77].rstrip() + "..."
+            print(f"consider follow-up: hunt followup add {finding_id} "
+                  f"\"{fam['name']}: {summary}\" --kind {kind}")
+    except Exception:
+        # A suggestion is a courtesy, not a gate: the promotion already
+        # succeeded and its receipt must still print.
+        pass
+
+
 def cmd_finding(args, conn) -> int:
     if args.action == "add":
         # MSYS guard (L2.2): titles are free text; a mangled Git path must be
@@ -451,6 +494,7 @@ def cmd_finding(args, conn) -> int:
     elif args.action == "promote":
         new_status = db.promote_finding(conn, args.id, args.evidence_ref, args.poc_path)
         print(f"finding #{args.id} promoted -> {new_status} (evidence: {args.evidence_ref})")
+        _suggest_followups(conn, args.id)
         _show_receipt(f"promoted finding #{args.id} to {new_status}", "hunt status")
     elif args.action == "overturn":
         db.overturn_finding(conn, args.id, args.by)

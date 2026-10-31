@@ -36,6 +36,10 @@ READ_ONLY = frozenset({
     "hunt_target_list",
     "hunt_lead_list",
     "hunt_verify_report",
+    # follow-up listing is a read: it never mutates the ledger. Kept in parity
+    # with the server's readOnlyHint tools by the sync test in
+    # tests/smoke/test_plugin_runtime.py (test_pre_gate_read_only_set_matches_server).
+    "hunt_followup_list",
 })
 
 

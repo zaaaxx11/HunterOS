@@ -280,12 +280,21 @@ class Conductor:
         Used by start_run (fresh cells) and resume_run (pending cells alike):
         a cell with a research result is skipped, an uncertain cell blocks its
         lane until reconciled, anything else gets a (new) attempt dispatched.
+
+        The wave's iteration budget stops the loop the same way a paused
+        session does: a spent wave refuses new work at the kernel gate, so
+        dispatching another attempt would only spend a turn on a refusal. The
+        stop is clean (no raise, the session row is returned as-is) and it is
+        RECORDED as a conductor incident so the control room shows why the
+        loop stopped instead of leaving an unexplained gap.
         """
         for round_no in range(1, rounds + 1):
             for lane in db.CONDUCTOR_LANES:
                 session = db.get_conductor_session(conn, sid)
                 if session["status"] not in ("running", "degraded"):
                     return  # paused/recovery_required/aborted mid-loop: stop (law)
+                if self._wave_budget_exhausted(conn, sid):
+                    return  # the wave is out of budget: stop new dispatch
                 attempt = self._pending_or_new_attempt(conn, sid, lane, round_no)
                 if attempt is None:
                     continue  # done, or blocked until reconciliation
@@ -301,6 +310,40 @@ class Conductor:
         # behind a completed child is done.
         if session["status"] == "running" and not self._has_pending_work(conn, sid, rounds):
             db.set_conductor_session_status(conn, sid, "completed")
+
+    def _wave_budget_exhausted(self, conn, sid: str) -> bool:
+        """True when the session's target has an open wave with no budget left.
+
+        The incident is recorded on the FIRST cell that finds the wave spent,
+        so the control room carries exactly one explanation per run rather
+        than one per lane. A target with no open wave (or an unbudgeted one)
+        never blocks the loop.
+        """
+        session = db.get_conductor_session(conn, sid)
+        if session is None or session["target_id"] is None:
+            return False
+        open_wave = conn.execute(
+            "SELECT id FROM waves WHERE target_id=? AND ev_verdict='' "
+            "ORDER BY number DESC LIMIT 1",
+            (session["target_id"],),
+        ).fetchone()
+        if open_wave is None:
+            return False
+        state = db.wave_budget(conn, open_wave["id"])
+        if not state["exhausted"]:
+            return False
+        already = any(
+            i["class"] == "wave_budget_exhausted"
+            for i in db.list_conductor_incidents(conn, sid)
+        )
+        if not already:
+            db.record_conductor_incident(
+                conn, sid, "wave_budget_exhausted",
+                f"wave #{open_wave['id']} spent {state['used']}/{state['budget']} "
+                "iterations — new dispatch refused; close the wave or raise the "
+                "budget with a reason",
+            )
+        return True
 
     def _pending_or_new_attempt(self, conn, sid: str, lane: str, round_no: int):
         """The cell's next attempt, or None when the cell needs nothing."""

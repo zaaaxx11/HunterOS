@@ -310,6 +310,55 @@ def _argv_wave_budget(a: dict) -> list[str]:
     return out
 
 
+def _argv_followup_add(a: dict) -> list[str]:
+    out = [
+        "followup", "add",
+        str(a["finding_id"]),
+        _positional("title", a["title"]),
+    ]
+    _opt(out, a, "kind", "--kind")
+    _opt(out, a, "hypothesis", "--hypothesis")
+    return out
+
+
+def _argv_followup_list(a: dict) -> list[str]:
+    out = ["followup", "list"]
+    _opt(out, a, "finding", "--finding")
+    _opt(out, a, "target", "--target")
+    _opt(out, a, "state", "--state")
+    return out
+
+
+def _argv_followup_verify(a: dict) -> list[str]:
+    return [
+        "followup", "verify",
+        str(a["followup_id"]),
+        f"--evidence={a['evidence']}",
+    ]
+
+
+def _argv_followup_drop(a: dict) -> list[str]:
+    return [
+        "followup", "drop",
+        str(a["followup_id"]),
+        f"--reason={a['reason']}",
+    ]
+
+
+def _argv_followup_promote(a: dict) -> list[str]:
+    out = [
+        "followup", "promote",
+        str(a["followup_id"]),
+        f"--klass={a['klass']}",
+    ]
+    _opt(out, a, "severity", "--severity")
+    # --roe-action, NOT --action: the `followup` subparser owns dest="action"
+    # (E22 class), and a flag claiming that dest would silently reroute this
+    # subcommand to the wrong branch.
+    _opt(out, a, "roe_action", "--roe-action")
+    return out
+
+
 # Schema helpers
 def _s(desc: str, **kw) -> dict:
     d = {"type": "string", "description": desc, "maxLength": MAX_STR}
@@ -339,6 +388,8 @@ _SEVERITY = ["critical", "high", "medium", "low", "info"]
 _ACTION = ["recon", "read", "auth-test", "mutate"]
 _ARTIFACT_TYPE = ["fork_receipt", "tx_hash", "http_transcript"]
 _MUTATION_RESULT = ["advanced", "unchanged", "refuted", "unknown"]
+_FOLLOWUP_KIND = ("escalation", "variant", "adjacent-surface", "chain-step")
+_FOLLOWUP_STATE = ("open", "verified", "dropped", "promoted")
 
 TOOLS: dict[str, dict] = {
     # --- read tools ---
@@ -599,6 +650,95 @@ TOOLS: dict[str, dict] = {
             ["wave_id"],
         ),
         "argv": _argv_wave_budget,
+    },
+    # --- follow-up tools ---
+    # The implications a finding leaves untested, as ledger objects. Without
+    # these an MCP-only agent can record a finding and then forget everything
+    # it implied: the close gate (verify / drop with a reason) and the promote
+    # path into a child finding would live only in the shell.
+    "hunt_followup_add": {
+        "description": (
+            "Register a follow-up a finding implies but has not tested. The "
+            "CLI refuses a kind outside the four known kinds."
+        ),
+        "annotations": _WRITE,
+        "inputSchema": _obj(
+            {
+                "finding_id": _i("Parent finding id."),
+                "title": _s("Follow-up title.", minLength=1),
+                "kind": _s("Follow-up kind.", enum=list(_FOLLOWUP_KIND)),
+                "hypothesis": _s("What you expect to be true, stated so it can fail."),
+            },
+            ["finding_id", "title"],
+        ),
+        "argv": _argv_followup_add,
+    },
+    "hunt_followup_list": {
+        "description": (
+            "List follow-ups, newest first, filtered by parent finding, target "
+            "or state. Read-only: it never mutates the ledger."
+        ),
+        "annotations": _READ,
+        "inputSchema": _obj(
+            {
+                "finding": _i("Parent finding id (optional)."),
+                "target": _i("Target id (optional)."),
+                "state": _s("Follow-up state.", enum=list(_FOLLOWUP_STATE)),
+            },
+            [],
+        ),
+        "argv": _argv_followup_list,
+    },
+    "hunt_followup_verify": {
+        "description": (
+            "Close a follow-up as verified: its hypothesis was tested and held. "
+            "The evidence is the observation that settled it."
+        ),
+        "annotations": _WRITE,
+        "inputSchema": _obj(
+            {
+                "followup_id": _i("Follow-up id."),
+                "evidence": _s("The observation that settled it.", minLength=1),
+            },
+            ["followup_id", "evidence"],
+        ),
+        "argv": _argv_followup_verify,
+    },
+    "hunt_followup_drop": {
+        "description": (
+            "Close a follow-up as dropped. The CLI enforces a reason of at "
+            "least 20 characters — dropping is a decision, not a silence."
+        ),
+        "annotations": _WRITE,
+        "inputSchema": _obj(
+            {
+                "followup_id": _i("Follow-up id."),
+                "reason": _s(
+                    "What was tried and what ruled it out (min 20 chars).",
+                    minLength=20,
+                ),
+            },
+            ["followup_id", "reason"],
+        ),
+        "argv": _argv_followup_drop,
+    },
+    "hunt_followup_promote": {
+        "description": (
+            "Turn a follow-up into its own finding, linked back to its parent. "
+            "The child is born through the finding-add gate (klass taxonomy, "
+            "severity, RoE action)."
+        ),
+        "annotations": _WRITE,
+        "inputSchema": _obj(
+            {
+                "followup_id": _i("Follow-up id."),
+                "klass": _s("Vulnerability class for the child finding.", minLength=1),
+                "severity": _s("Severity.", enum=_SEVERITY),
+                "roe_action": _s("Rules-of-engagement action scale.", enum=_ACTION),
+            },
+            ["followup_id", "klass"],
+        ),
+        "argv": _argv_followup_promote,
     },
 }
 

@@ -1905,6 +1905,66 @@ def promote_lead(conn: sqlite3.Connection, lead_id: int, klass: str,
 FOLLOWUP_KINDS = ("escalation", "variant", "adjacent-surface", "chain-step")
 FOLLOWUP_STATES = ("open", "verified", "dropped", "promoted")
 MIN_DROP_REASON = 20  # same bar as a wave re-audit summary
+# Display order: the live work first, then the settled history. A follow-up
+# that is still open is the only kind that can still be acted on, so it must
+# not be buried under rows that are already closed.
+FOLLOWUP_DISPLAY_ORDER = ("open", "verified", "dropped", "promoted")
+
+
+def _render_followups(rows: list, upper_state: bool = False) -> list:
+    """Follow-up rows as markdown lines, open first, each with its outcome.
+
+    A closed row carries HOW it ended — dropped keeps the reason that killed
+    it, promoted keeps the child finding id — so a reader sees the history
+    instead of a state word with no provenance behind it. Rows arrive in any
+    order (list_followups is newest-first) and are regrouped here.
+    """
+    by_state = {s: [] for s in FOLLOWUP_DISPLAY_ORDER}
+    for r in rows:
+        by_state.setdefault(r["state"], []).append(r)
+    lines = []
+    for state in FOLLOWUP_DISPLAY_ORDER:
+        for r in by_state.get(state, []):
+            shown = state.upper() if upper_state else state
+            lines.append(
+                f"- [#{r['id']}] [{r['kind']}] {shown} "
+                f"parent=F-{r['parent_finding_id']} {r['title']}"
+            )
+            if r["hypothesis"]:
+                lines.append(f"  hypothesis: {r['hypothesis']}")
+            if state == "dropped" and r["drop_reason"]:
+                lines.append(f"  dropped: {r['drop_reason']}")
+            if state == "promoted" and r["promoted_finding_id"]:
+                lines.append(
+                    f"  promoted to finding #{r['promoted_finding_id']}"
+                )
+    return lines
+
+
+def followup_contradictions(conn: sqlite3.Connection, target_id: int) -> list:
+    """Honesty flags for follow-ups that can no longer be closed (R2-09).
+
+    A finding that is already proven-live or overturned has no transitions
+    left, so the close gate can never fire for it — yet its open follow-ups
+    stay open forever, silently rotting. A theoretical/in-code finding with
+    open follow-ups is NORMAL (the gate will settle them on the way up) and
+    is deliberately not flagged. Display-only, like every other flag here.
+    """
+    flags = []
+    rows = conn.execute(
+        "SELECT f.id AS fid, f.ladder_status AS st, COUNT(u.id) AS n "
+        "FROM findings f JOIN followups u ON u.parent_finding_id = f.id "
+        "WHERE f.target_id=? AND f.ladder_status IN ('proven-live','overturned') "
+        "AND u.state='open' GROUP BY f.id, f.ladder_status ORDER BY f.id",
+        (target_id,),
+    ).fetchall()
+    for row in rows:
+        flags.append(
+            f"!! finding #{row['fid']} is {row['st']} but still has "
+            f"{row['n']} open follow-up(s) — settle them directly "
+            f"(hunt followup verify|drop|promote)"
+        )
+    return flags
 
 
 def add_followup(conn: sqlite3.Connection, parent_finding_id: int, title: str,
@@ -2393,6 +2453,10 @@ def find_contradictions(conn: sqlite3.Connection, target_id: int) -> list:
         flags.append(
             f"!! {mismatch} on-chain broadcast(s) (tx_hash) on non-mutate finding(s)"
         )
+    # Follow-ups that can no longer be closed (R2-09): a terminal finding's
+    # open follow-ups have no transition left to settle them through, so the
+    # close gate will never fire and the row rots silently.
+    flags += followup_contradictions(conn, target_id)
     return flags + lead_contradictions(conn, target_id)
 
 
@@ -3043,6 +3107,16 @@ def export_report(conn: sqlite3.Connection, target_id: int) -> str:
     for c in chain_rows:
         lines.append(chain_detail(conn, c["id"]))
         lines.append("")
+    # Follow-ups (R2-09): finding-to-finding traceability. The Chains section
+    # shows the gadget graph; this shows the implications that were never
+    # tested, which is where a chain quietly stops being complete. Must sit
+    # BEFORE the digest below so it rides inside the hashed body.
+    lines.append("## Follow-ups")
+    followups = list_followups(conn, target_id=target_id)
+    if not followups:
+        lines.append("(none recorded)")
+    else:
+        lines += _render_followups(followups, upper_state=True)
     body = "\n".join(lines) + "\n"
     # Order matters: the sha256 digest is computed over the RAW body (what is
     # actually stored in the DB) BEFORE redaction. Redaction is a display-time
@@ -3165,6 +3239,19 @@ def export_brief(conn: sqlite3.Connection, target_id: int) -> str:
             f"wave {w['number']}: lanes={w['lanes']} findings_new={w['findings_new']} "
             f"verdict={verdict} reaudit={reaudit}"
         )
+
+    # Follow-ups (R2-09): the untested implications of every finding on this
+    # target, open first. This is the section that makes the work visible —
+    # without it the follow-up table is a silent side-channel nobody reads.
+    lines += ["", "## Follow-ups"]
+    followups = list_followups(conn, target_id=target_id)
+    if not followups:
+        lines.append(
+            "(none recorded — a finding's untested implications are follow-ups: "
+            "hunt followup add <finding_id> \"<title>\")"
+        )
+    else:
+        lines += _render_followups(followups)
 
     # Findings by ladder: counts for every rung, then the non-overturned list.
     lines += ["", "## Findings by ladder"]
@@ -3309,6 +3396,12 @@ def next_command(conn: sqlite3.Connection, target_id: int) -> tuple:
     never recommends `hunt wave open` (lanes are judgment) and an open wave
     makes NEXT a read (`hunt status`) with the close command in WHY. RoE is not
     a phase gate and never appears in the order.
+
+    The iteration budget is a SIGNAL, not only a brake: while an open wave
+    still has budget, an open follow-up on the wave's target outranks the
+    generic status read (row 8.5 — the untested implication is the next unit of
+    work), and a wave whose budget is spent makes NEXT the close command rather
+    than a read that would only advertise work the gate now refuses (row 9.5).
     """
     t = get_target(conn, target_id)
     tid = t["id"]
@@ -3375,14 +3468,47 @@ def next_command(conn: sqlite3.Connection, target_id: int) -> tuple:
             )
 
     if phase == "hunting":
-        # Row 9 — hunting fork: a wave is already open. Judgment, so next is a
-        # READ, never a finding and never `hunt wave open`; the close command
-        # goes in WHY.
+        # Row 8.5 — the budget still has room and the wave already implies
+        # work: an open follow-up is the next unit of work, ranked ahead of
+        # the generic status read. The lowest parent finding id wins, the same
+        # lowest-id rule rows 10-13 use, so the order stays deterministic.
         open_wave = conn.execute(
             "SELECT * FROM waves WHERE target_id=? AND ev_verdict='' ORDER BY number DESC LIMIT 1",
             (tid,),
         ).fetchone()
+        if open_wave is not None and not wave_budget(conn, open_wave["id"])["exhausted"]:
+            for f in conn.execute(
+                "SELECT * FROM findings WHERE target_id=? ORDER BY id", (tid,)
+            ).fetchall():
+                pending = open_followups(conn, f["id"])
+                if pending:
+                    fid = f["id"]
+                    kinds = ", ".join(sorted({p["kind"] for p in pending}))
+                    return (
+                        f"hunt followup list --finding {fid}",
+                        f"wave #{open_wave['id']} (number {open_wave['number']}) is open with "
+                        f"{wave_budget(conn, open_wave['id'])['remaining']} iteration(s) left — "
+                        f"finding #{fid} has {len(pending)} open follow-up(s) ({kinds}) that the "
+                        "budget can still spend; read them before recording new work",
+                    )
+        # Row 9 — hunting fork: a wave is already open. Judgment, so next is a
+        # READ, never a finding and never `hunt wave open`; the close command
+        # goes in WHY.
         if open_wave is not None:
+            # Row 9.5 — the budget is spent. `hunt status` would only advertise
+            # work the gate now refuses (findings, lead mutations, fuzz probes),
+            # so NEXT becomes the close command itself: the verdict is the only
+            # legal way forward, and raising the budget needs a recorded reason.
+            if wave_budget(conn, open_wave["id"])["exhausted"]:
+                state = wave_budget(conn, open_wave["id"])
+                return (
+                    f"hunt wave close --wave-id {open_wave['id']} --verdict exhausted",
+                    f"wave #{open_wave['id']} (number {open_wave['number']}) spent all "
+                    f"{state['budget']} of its iteration budget — new findings, lead "
+                    "mutations and fuzz probes are refused until it is closed or the "
+                    'budget is raised with a reason (hunt wave budget --wave-id '
+                    f"{open_wave['id']} --set <n> --reason \"...\")",
+                )
             return (
                 "hunt status",
                 f"wave #{open_wave['id']} (number {open_wave['number']}) is open — record "

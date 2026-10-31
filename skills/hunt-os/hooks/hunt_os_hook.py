@@ -44,6 +44,7 @@ READ_ONLY = frozenset({
     "hunt_target_list",
     "hunt_lead_list",
     "hunt_verify_report",
+    "hunt_followup_list",
 })
 
 
