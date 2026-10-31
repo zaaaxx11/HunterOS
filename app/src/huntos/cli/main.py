@@ -2744,10 +2744,12 @@ def main(argv=None) -> int:
              "default: project",
     )
     pi.add_argument(
-        "--mode", choices=("router", "native"), default="router",
+        "--mode", choices=("router", "native", "mcp"), default="router",
         help="router = one 'hunt-os' skill with the full corpus, roles, and "
              "hook pack nested inside (default); native = one "
-             "hunt-<category>-<name> skill per skill PLUS the router",
+             "hunt-<category>-<name> skill per skill PLUS the router; mcp = "
+             "ONLY the MCP server and its generated .mcp.json, no skills tree "
+             "(for harnesses whose loader cannot resolve nested skill paths)",
     )
     pi.add_argument(
         "--dir", default=None,

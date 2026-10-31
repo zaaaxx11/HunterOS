@@ -34,6 +34,9 @@ PLUGIN_NAME = "hunt-os"
 MARKET_NAME = "hunter-os"
 PLUGIN_REL = Path(".")
 MARKET_FILES = (REPO / "marketplace.json", REPO / ".claude-plugin" / "marketplace.json")
+# The generated .mcp.json is machine-local (absolute interpreter + server
+# paths), so it is excluded from the committed tree and from drift checks.
+MCP_CONFIG_NAME = ".mcp.json"
 
 # Paths at the repo root that this generator owns. Everything else
 # under the plugin (commands, hooks, .mcp.json) is hand-written source and is
@@ -116,6 +119,11 @@ def generate(out_root: Path) -> dict[str, bytes]:
         inner = rel[len("hunt-os/"):]
         if inner == "SKILL.md":
             continue
+        # The generated .mcp.json carries absolute interpreter and server
+        # paths for the machine that ran the install. It is machine-local by
+        # design: never written into the committed tree, never diffed.
+        if inner == MCP_CONFIG_NAME:
+            continue
         files[f"skills/hunt-os/{inner}"] = norm_checkout(data)
 
     # 2. Claim gate copied byte-for-byte (sha256 recorded in the plan too).
@@ -151,6 +159,13 @@ def committed_files(root: Path) -> dict[str, bytes]:
                 continue
             rel = path.relative_to(base).as_posix()
             if rel == CURATED_SKILL:
+                continue
+            # The generated .mcp.json carries an ABSOLUTE interpreter path and
+            # an absolute server path for the machine that ran the install.
+            # It is machine-local by design, so it is never committed and
+            # never diffed — otherwise every checkout would report drift the
+            # moment anyone installed anywhere.
+            if rel.endswith(MCP_CONFIG_NAME):
                 continue
             if rel.startswith(GENERATED_PREFIXES) or rel in GENERATED_PREFIXES:
                 out[rel] = norm_checkout(path.read_bytes())

@@ -47,6 +47,7 @@ huntos = [
   "_data/roles/*",
   "_data/hooks/*",
   "_data/bin/*",
+  "_data/mcp/*",
 ]
 
 [tool.setuptools.exclude-package-data]

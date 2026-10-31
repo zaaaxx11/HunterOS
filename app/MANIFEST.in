@@ -11,6 +11,7 @@ recursive-include src/huntos/_data/idea/skills/web3 *
 recursive-include src/huntos/_data/roles *
 recursive-include src/huntos/_data/hooks *
 recursive-include src/huntos/_data/bin *
+recursive-include src/huntos/_data/mcp *
 prune src/huntos/_data/attic
 prune src/huntos/_data/idea/skills/osint
 global-exclude *private*

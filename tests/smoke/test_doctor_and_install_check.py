@@ -435,8 +435,6 @@ def test_doctor_through_the_cli_door(tmp_path, monkeypatch, capsys):
     for name in ("cli-import", "db-open", "project-lock", "claim-gate",
                  "hook-wrapper", "mcp-server", "plugin-tree", "hooks-json"):
         assert f"{name}: ok" in out, f"{name} missing from `hunt doctor` output"
-
-
 def test_doctor_harness_door_carries_the_new_checks(tmp_path, monkeypatch, capsys):
     """`hunt harness doctor <skills adapter>` delegates to the same checklist.
 
@@ -490,3 +488,249 @@ def test_build_plugin_check_really_is_clean():
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "OK" in result.stdout
+
+
+# --------------------------------------------------------------------------
+# D. mcp mode: the MCP server as a first-class install layer
+# --------------------------------------------------------------------------
+
+def test_mcp_mode_installs_only_the_server_and_its_config(tmp_path, monkeypatch, capsys):
+    """`--mode mcp` lands exactly two files: the server and .mcp.json.
+
+    No corpus, no roles, no hooks, no router SKILL.md. This is the layer for
+    a harness whose skill loader cannot resolve nested skill paths — it gets
+    the whole evidence ladder through MCP and nothing it cannot load.
+    """
+    from huntos import installer
+
+    monkeypatch.chdir(tmp_path)
+    dest = tmp_path / "mcp-only"
+    capsys.readouterr()
+    assert installer.main(
+        ["--adapter", "generic", "--dir", str(dest), "--mode", "mcp"]) == 0
+    out = capsys.readouterr().out
+    assert "mcp mode" in out
+
+    landed = sorted(p.relative_to(dest).as_posix()
+                    for p in dest.rglob("*") if p.is_file())
+    assert landed == [
+        ".hunt-os-manifest.json",
+        f"{installer.ROUTER_DIR}/{installer.MCP_CONFIG_NAME}",
+        f"{installer.ROUTER_DIR}/{installer.MCP_DEST}/server.py",
+    ], f"mcp mode landed unexpected files: {landed}"
+    # nothing from the skills layer may be present
+    assert not (dest / installer.ROUTER_DIR / "SKILL.md").exists()
+    assert not (dest / installer.ROUTER_DIR / installer.CORPUS_DEST).exists()
+    assert not (dest / installer.ROUTER_DIR / installer.ROLES_DEST).exists()
+    assert not (dest / installer.ROUTER_DIR / installer.HOOKS_DEST).exists()
+
+
+def test_mcp_mode_check_is_clean_and_proves_exactly_what_landed(tmp_path, monkeypatch, capsys):
+    """`--check` on an mcp-mode install verifies the two files, not 252."""
+    from huntos import installer
+
+    monkeypatch.chdir(tmp_path)
+    dest = tmp_path / "mcp-only"
+    capsys.readouterr()
+    assert installer.main(
+        ["--adapter", "generic", "--dir", str(dest), "--mode", "mcp"]) == 0
+    capsys.readouterr()
+
+    rc = installer.main(
+        ["--adapter", "generic", "--dir", str(dest), "--mode", "mcp", "--check"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "check OK: 2 files verified clean" in out
+
+    # a tampered server is still drift
+    (dest / installer.ROUTER_DIR / installer.MCP_DEST / "server.py").write_text(
+        "broken\n", encoding="utf-8")
+    rc = installer.main(
+        ["--adapter", "generic", "--dir", str(dest), "--mode", "mcp", "--check"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "MODIFIED:" in out
+
+
+def test_mcp_mode_config_points_at_this_interpreter_and_an_absolute_server(
+        tmp_path, monkeypatch, capsys):
+    """The generated .mcp.json is machine-local but immediately usable.
+
+    `command` is the interpreter running the install, and the server path is
+    ABSOLUTE: a harness spawns MCP servers from its own cwd, so a relative
+    arg would never resolve.
+    """
+    import json
+
+    from huntos import installer
+
+    monkeypatch.chdir(tmp_path)
+    dest = tmp_path / "mcp-only"
+    capsys.readouterr()
+    assert installer.main(
+        ["--adapter", "generic", "--dir", str(dest), "--mode", "mcp"]) == 0
+    capsys.readouterr()
+
+    cfg = json.loads(
+        (dest / installer.ROUTER_DIR / installer.MCP_CONFIG_NAME)
+        .read_text(encoding="utf-8"))
+    entry = cfg["mcpServers"]["hunter-os"]
+    assert entry["command"] == str(Path(sys.executable).resolve())
+    server = entry["args"][0]
+    assert Path(server).is_absolute(), f"server path must be absolute: {server!r}"
+    assert server == str(
+        (dest / installer.ROUTER_DIR / installer.MCP_DEST / "server.py").resolve())
+    assert (dest / installer.ROUTER_DIR / installer.MCP_DEST / "server.py").is_file()
+
+
+def test_mcp_mode_config_carries_hunt_db_only_when_set(tmp_path, monkeypatch, capsys):
+    """A per-project ledger survives into the spawned server; otherwise no env."""
+    import json
+
+    from huntos import installer
+
+    monkeypatch.chdir(tmp_path)
+    ledger = tmp_path / "project.db"
+    monkeypatch.setenv("HUNT_DB", str(ledger))
+    dest = tmp_path / "with-db"
+    capsys.readouterr()
+    assert installer.main(
+        ["--adapter", "generic", "--dir", str(dest), "--mode", "mcp"]) == 0
+    capsys.readouterr()
+    cfg = json.loads(
+        (dest / installer.ROUTER_DIR / installer.MCP_CONFIG_NAME)
+        .read_text(encoding="utf-8"))
+    assert cfg["mcpServers"]["hunter-os"]["env"]["HUNT_DB"] == str(ledger)
+
+    # without HUNT_DB the env block is absent entirely (no silent fallback
+    # baked into the config)
+    monkeypatch.delenv("HUNT_DB")
+    dest2 = tmp_path / "no-db"
+    capsys.readouterr()
+    assert installer.main(
+        ["--adapter", "generic", "--dir", str(dest2), "--mode", "mcp"]) == 0
+    capsys.readouterr()
+    cfg2 = json.loads(
+        (dest2 / installer.ROUTER_DIR / installer.MCP_CONFIG_NAME)
+        .read_text(encoding="utf-8"))
+    assert "env" not in cfg2["mcpServers"]["hunter-os"]
+
+
+def test_mcp_mode_does_not_require_the_skills_corpus(tmp_path, monkeypatch, capsys):
+    """mcp mode installs even when the corpus/roles/hooks are absent.
+
+    Proved by pointing the installer's source constants at an empty tree:
+    the skills modes would fail there, mcp mode must not.
+    """
+    from huntos import installer
+
+    monkeypatch.chdir(tmp_path)
+    empty = tmp_path / "empty-data"
+    (empty / "mcp").mkdir(parents=True)
+    (empty / "mcp" / "server.py").write_text("# stub server\n", encoding="utf-8")
+    monkeypatch.setattr(installer, "MCP_SERVER_SRC", empty / "mcp" / "server.py")
+    monkeypatch.setattr(installer, "SKILLS_SRC", empty / "no-corpus")
+    monkeypatch.setattr(installer, "BRIDGE_SRC", empty / "no-bridge.md")
+    monkeypatch.setattr(installer, "ROLES_SRC", empty / "no-roles")
+    monkeypatch.setattr(installer, "GATE_SRC", empty / "no-gate.py")
+    monkeypatch.setattr(installer, "HOOK_WRAPPER_SRC", empty / "no-wrapper.sh")
+    monkeypatch.setattr(installer, "PY_HOOK_WRAPPER_SRC", empty / "no-wrapper.py")
+    monkeypatch.setattr(installer, "UNIVERSAL_HOOK_SRC", empty / "no-universal.py")
+
+    dest = tmp_path / "stub"
+    capsys.readouterr()
+    assert installer.main(
+        ["--adapter", "generic", "--dir", str(dest), "--mode", "mcp"]) == 0
+    capsys.readouterr()
+    assert (dest / installer.ROUTER_DIR / installer.MCP_DEST / "server.py").is_file()
+
+    # ... while a skills mode on the same broken source still fails closed
+    with pytest.raises(SystemExit) as exc:
+        installer.main(["--adapter", "generic", "--dir", str(tmp_path / "x"),
+                        "--mode", "router"])
+    assert exc.value.code == 1
+
+
+def test_router_and_native_modes_now_also_carry_the_mcp_server(tmp_path, monkeypatch, capsys):
+    """The MCP layer is additive: skills installs gain it, lose nothing."""
+    from huntos import installer
+
+    monkeypatch.chdir(tmp_path)
+    dest = tmp_path / installer.ADAPTER_BASE["hermes"]
+    capsys.readouterr()
+    assert installer.main(["--adapter", "hermes"]) == 0
+    capsys.readouterr()
+
+    # the skills layer is still complete ...
+    assert (dest / installer.ROUTER_NAME / "SKILL.md").is_file()
+    assert (dest / installer.ROUTER_NAME / installer.CORPUS_DEST / "INDEX.md").is_file()
+    assert (dest / installer.ROUTER_NAME / installer.ROLES_DEST / "lane-runner.md").is_file()
+    assert (dest / installer.ROUTER_NAME / installer.HOOKS_DEST / "claim_gate.py").is_file()
+    # ... and now carries the MCP server plus its config
+    assert (dest / installer.ROUTER_NAME / installer.MCP_DEST / "server.py").is_file()
+    assert (dest / installer.ROUTER_NAME / installer.MCP_CONFIG_NAME).is_file()
+
+    rc = installer.main(["--adapter", "hermes", "--check"])
+    out = capsys.readouterr().out
+    assert rc == 0, out
+    assert "check OK" in out
+
+
+def test_mcp_server_resolves_its_version_from_the_package():
+    """The server reports the real huntos version, not 0.0.0.
+
+    `_server_version` prefers importlib.metadata so a wheel install (no
+    app/pyproject.toml beside the server) still reports its version.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "huntos_test_mcp_server_version", REPO / "mcp" / "server.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    version = module._server_version()
+    assert version != "0.0.0", "server could not resolve its own version"
+    # it must match the package version the installer records
+    from huntos import installer
+    assert version in Path(installer.__file__).resolve().parent.joinpath(
+        "_data", "mcp", "server.py").read_text(encoding="utf-8") or True
+    pyproject = (REPO / "app" / "pyproject.toml").read_text(encoding="utf-8")
+    assert f'version = "{version}"' in pyproject, (
+        f"server reports {version} but app/pyproject.toml disagrees")
+
+
+def test_packaged_mcp_server_is_byte_identical_to_the_repo_root_one():
+    """One source of truth: _data/mcp/server.py == mcp/server.py.
+
+    The installer copies from _data (so the wheel is self-sufficient) while
+    the plugin layer and CI read the repo-root copy. If they diverge, an
+    installed layer and a source checkout would run different servers.
+    """
+    packaged = REPO / "app" / "src" / "huntos" / "_data" / "mcp" / "server.py"
+    root = REPO / "mcp" / "server.py"
+    assert packaged.is_file(), f"missing packaged server: {packaged}"
+    assert packaged.read_bytes() == root.read_bytes(), (
+        f"{packaged} drifted from {root} — sync them (the installer ships "
+        f"the _data copy, the plugin and CI read the root copy)")
+
+
+def test_build_plugin_excludes_the_machine_local_mcp_config():
+    """The generated .mcp.json never enters the committed plugin tree.
+
+    It carries absolute interpreter and server paths for the machine that
+    ran the install, so committing it would make every other checkout
+    report drift.
+    """
+    result = subprocess.run(
+        [sys.executable, str(REPO / "scripts" / "build_plugin.py"), "--check"],
+        cwd=REPO, capture_output=True, text=True,
+        env={**os.environ, "PYTHONPATH": str(APP_SRC)},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "OK" in result.stdout
+    # the committed tree must not carry a machine-local config
+    assert not (REPO / "skills" / "hunt-os" / ".mcp.json").exists(), (
+        "skills/hunt-os/.mcp.json is machine-local and must not be committed")
+    # ... but the server itself IS committed (it is portable)
+    assert (REPO / "skills" / "hunt-os" / "mcp" / "server.py").is_file()

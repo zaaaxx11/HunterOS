@@ -36,7 +36,13 @@ from pathlib import Path
 #        and the source_tree_hash basis shift accordingly — a pre-1.3 install
 #        reports one informational source-drift WARNING after `--check`; the
 #        exit-code contract is unchanged and a re-install refreshes the tree.
-SKILLS_VERSION = "1.3.0"
+# 1.4.0: the MCP server is a FIRST-CLASS install layer. It ships inside the
+#        package (_data/mcp/server.py) so the wheel is self-sufficient, and
+#        `hunt install` copies it plus a generated .mcp.json whose command is
+#        resolved to THIS interpreter — no checkout, no hand-editing. The
+#        skills tree stays optional: a harness with a broken or nested-only
+#        skill loader still gets the full evidence ladder through MCP.
+SKILLS_VERSION = "1.4.0"
 
 # The packaged idea layer. DATA_ROOT is the single base for every source the
 # installer copies or embeds; it resolves inside the installed package, so an
@@ -50,12 +56,15 @@ GATE_SRC = DATA_ROOT / "bin" / "claim_gate.py"          # the mouth guard
 HOOK_WRAPPER_SRC = DATA_ROOT / "hooks" / "claim_gate_wrapper.sh"
 PY_HOOK_WRAPPER_SRC = DATA_ROOT / "hooks" / "claim_gate_wrapper.py"
 UNIVERSAL_HOOK_SRC = DATA_ROOT / "hooks" / "hunt_os_hook.py"  # the 4-point contract
+MCP_SERVER_SRC = DATA_ROOT / "mcp" / "server.py"        # the stdio JSON-RPC door
 
 MANIFEST_NAME = ".hunt-os-manifest.json"
 ROUTER_DIR = "hunt-os"
 CORPUS_DEST = "skills"                                  # nested inside ROUTER_DIR
 ROLES_DEST = "roles"                                    # nested inside ROUTER_DIR
 HOOKS_DEST = "hooks"                                    # nested inside ROUTER_DIR
+MCP_DEST = "mcp"                                        # nested inside ROUTER_DIR
+MCP_CONFIG_NAME = ".mcp.json"                           # generated, not copied
 
 # Law 5 (roles travel with the hunt layer): an engine that only has the
 # installed skills tree must be able to read every lane role without the git
@@ -218,16 +227,23 @@ def source_tree_hash() -> str:
 
 def _source_files() -> "list[tuple[str, Path]]":
     """(posix relpath, absolute path) for every source file the installer
-    copies or embeds into the installed layer."""
+    copies or embeds into the installed layer.
+
+    Missing sources are skipped, not read: `source_tree_hash()` runs on every
+    install (including an mcp-mode install on a tree that carries no corpus),
+    and a source that is legitimately absent must not turn the hash into a
+    crash.
+    """
     files = list(collect_corpus())
-    files.append((BRIDGE_SRC.relative_to(DATA_ROOT).as_posix(), BRIDGE_SRC))
+    if BRIDGE_SRC.is_file():
+        files.append((_source_rel(BRIDGE_SRC), BRIDGE_SRC))
     files.extend(
-        (p.relative_to(DATA_ROOT).as_posix(), p) for p in _iter_files(ROLES_SRC)
+        (_source_rel(p), p) for p in _iter_files(ROLES_SRC)
     )
     for extra in (GATE_SRC, HOOK_WRAPPER_SRC, PY_HOOK_WRAPPER_SRC,
-                  UNIVERSAL_HOOK_SRC):
+                  UNIVERSAL_HOOK_SRC, MCP_SERVER_SRC):
         if extra.is_file():
-            files.append((extra.relative_to(DATA_ROOT).as_posix(), extra))
+            files.append((_source_rel(extra), extra))
     return files
 
 
@@ -257,6 +273,67 @@ def _frontmatter_fields(adapter: str) -> "list[str]":
         "    tags: [security, bug-bounty, audit, hunt, red-team, web2, web3]",
         "    category: security",
     ]
+
+
+def _source_rel(path: Path) -> str:
+    """The manifest's source_rel for a copied file.
+
+    Normally the path relative to _data (the packaged layout). A source that
+    lives outside _data — which only happens when a test or a downstream
+    packager points the constants elsewhere — falls back to the bare
+    filename rather than raising, so the plan still builds and the manifest
+    still records something honest.
+    """
+    try:
+        return path.resolve().relative_to(DATA_ROOT.resolve()).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _mcp_config(mode: str, adapter: str = "claude-code",
+                skills_dir: "Path | None" = None) -> str:
+    """A ready-to-use .mcp.json for the installed layer.
+
+    The command is resolved to the interpreter that is RUNNING this install,
+    so the file works on the machine it was generated for with no editing:
+    a venv install points at that venv's python, an editable checkout points
+    at whatever python ran `hunt install`.
+
+    The server path is ABSOLUTE. A harness spawns its MCP servers from its
+    own working directory, so a relative arg would resolve against the wrong
+    root and the server would never start. `skills_dir` is the destination
+    this plan writes to; when it is unknown the path stays relative rather
+    than guessing wrong.
+
+    `env` carries HUNT_DB only when the operator has one set, so a
+    per-project ledger keeps working instead of silently falling back to
+    ~/.huntos/hunt.db inside the spawned server.
+    """
+    import os
+
+    command = Path(sys.executable).resolve()
+    rel_server = f"{ROUTER_DIR}/{MCP_DEST}/server.py"
+    if skills_dir is not None:
+        server = str((Path(skills_dir) / rel_server).resolve())
+    else:
+        server = rel_server
+    env_block = ""
+    hunt_db = os.environ.get("HUNT_DB")
+    if hunt_db:
+        env_block = (
+            f',\n    "env": {{\n      "HUNT_DB": {json.dumps(hunt_db)}\n    }}'
+        )
+
+    return (
+        "{\n"
+        '  "mcpServers": {\n'
+        '    "hunter-os": {\n'
+        f'      "command": {json.dumps(str(command))},\n'
+        f'      "args": [{json.dumps(server)}]{env_block}\n'
+        "    }\n"
+        "  }\n"
+        "}\n"
+    )
 
 
 def _router_skill_md(mode: str, adapter: str = "claude-code") -> str:
@@ -340,7 +417,8 @@ def _router_skill_md(mode: str, adapter: str = "claude-code") -> str:
 # install plan: every file we intend to write, as (posix rel, bytes)
 # --------------------------------------------------------------------------
 
-def build_plan(mode: str, adapter: str = "claude-code") -> "list[tuple[str, bytes, str, str]]":
+def build_plan(mode: str, adapter: str = "claude-code",
+               skills_dir: "Path | None" = None) -> "list[tuple[str, bytes, str, str]]":
     """Return (dest_rel, content, source_rel, source_sha) tuples.
 
     source_rel is the repo-relative path of the copied source (empty for
@@ -348,9 +426,34 @@ def build_plan(mode: str, adapter: str = "claude-code") -> "list[tuple[str, byte
 
     `adapter` selects the SKILL.md frontmatter dialect; every copied file is
     identical across adapters, so the manifest hashes stay stable.
+
+    `mode` selects WHAT lands:
+      router | native -> the skills layer (corpus + roles + hooks + router
+                          SKILL.md), plus the MCP server and its config.
+      mcp             -> ONLY the MCP server and its generated .mcp.json.
+                          No corpus, no roles, no hooks, no router SKILL.md.
+
+    The mcp mode exists because a harness whose skill loader cannot resolve
+    nested paths (Hermes resolves only the first segment after the skills
+    root) can never load `hunt-os/skills/web3/<name>/SKILL.md`. That harness
+    is not broken for our purposes: MCP needs no skill discovery at all, so
+    the whole evidence ladder stays reachable through the 23 hunt_* tools.
     """
     plan: "list[tuple[str, bytes, str, str]]" = []
     fingerprint_entries: "list[tuple[str, str]]" = []
+
+    # mcp mode: the server and its config, nothing else. Early return keeps
+    # the manifest small and makes `--check` prove exactly what was installed.
+    if mode == "mcp":
+        if not MCP_SERVER_SRC.is_file():
+            _fail(f"mcp server not found at {MCP_SERVER_SRC}")
+        data = MCP_SERVER_SRC.read_bytes()
+        plan.append((f"{ROUTER_DIR}/{MCP_DEST}/server.py", data,
+                     _source_rel(MCP_SERVER_SRC), _sha256_bytes(data)))
+        plan.append((f"{ROUTER_DIR}/{MCP_CONFIG_NAME}",
+                     _mcp_config(mode, adapter, skills_dir).encode("utf-8"),
+                     "", ""))
+        return plan
 
     # corpus -> nested under hunt-os/skills/ (both modes: the router carries it)
     corpus = collect_corpus()
@@ -381,6 +484,21 @@ def build_plan(mode: str, adapter: str = "claude-code") -> "list[tuple[str, byte
         plan.append((f"{ROUTER_DIR}/{HOOKS_DEST}/{dest_name}", data,
                      src.relative_to(DATA_ROOT).as_posix(),
                      _sha256_bytes(data)))
+
+    # MCP server -> hunt-os/mcp/ (both modes). This is the layer that makes
+    # HUNT-OS usable on a harness whose skill loader cannot resolve nested
+    # paths: the server is stdio JSON-RPC and needs no skill discovery at
+    # all. It ships inside the package, so a wheel install copies it from
+    # _data with no checkout. The generated .mcp.json (below) points at this
+    # interpreter, so the operator never edits a path by hand.
+    if MCP_SERVER_SRC.is_file():
+        data = MCP_SERVER_SRC.read_bytes()
+        plan.append((f"{ROUTER_DIR}/{MCP_DEST}/server.py", data,
+                     MCP_SERVER_SRC.relative_to(DATA_ROOT).as_posix(),
+                     _sha256_bytes(data)))
+        plan.append((f"{ROUTER_DIR}/{MCP_CONFIG_NAME}",
+                     _mcp_config(mode, adapter, skills_dir).encode("utf-8"),
+                     "", ""))
 
     # generated router SKILL.md (not a copied source -> not fingerprinted)
     plan.append((f"{ROUTER_DIR}/SKILL.md",
@@ -520,29 +638,40 @@ def cmd_install(args: argparse.Namespace) -> int:
     skills_dir = resolve_skills_dir(args.adapter, args.scope, args.dir)
     if skills_dir.exists() and not skills_dir.is_dir():
         _fail(f"target skills dir path exists but is a file: {skills_dir}")
-    if not SKILLS_SRC.is_dir():
-        _fail(f"skills corpus not found at {SKILLS_SRC}")
-    if not BRIDGE_SRC.is_file():
-        _fail(f"bridge contract not found at {BRIDGE_SRC}")
+    if not MCP_SERVER_SRC.is_file():
+        _fail(f"mcp server not found at {MCP_SERVER_SRC}")
 
-    # Law 5 + hook pack: the installed layout PROMISES hunt-os/roles/ (all
-    # seven roles) and hunt-os/hooks/ (wrapper + gate). A broken source
-    # workspace must fail the install, not ship a layer missing its doctrine
-    # or its mouth guard.
-    missing_roles = [r for r in REQUIRED_ROLES if not (ROLES_SRC / f"{r}.md").is_file()]
-    if missing_roles:
-        _fail(f"role doctrine incomplete at {ROLES_SRC}: missing "
-              f"{', '.join(missing_roles)}")
-    if not GATE_SRC.is_file():
-        _fail(f"claim gate not found at {GATE_SRC}")
-    if not HOOK_WRAPPER_SRC.is_file():
-        _fail(f"hook wrapper not found at {HOOK_WRAPPER_SRC}")
-    if not PY_HOOK_WRAPPER_SRC.is_file():
-        _fail(f"Python hook wrapper not found at {PY_HOOK_WRAPPER_SRC}")
-    if not UNIVERSAL_HOOK_SRC.is_file():
-        _fail(f"universal hook contract not found at {UNIVERSAL_HOOK_SRC}")
+    # mcp mode ships ONLY the server and its config: the corpus, the role
+    # doctrine and the hook pack are not part of that contract, so their
+    # source files are not required to exist. Every other mode still fails a
+    # broken source workspace instead of shipping a layer missing its
+    # doctrine or its mouth guard.
+    if args.mode == "mcp":
+        plan = build_plan(args.mode, args.adapter, skills_dir)
+    else:
+        if not SKILLS_SRC.is_dir():
+            _fail(f"skills corpus not found at {SKILLS_SRC}")
+        if not BRIDGE_SRC.is_file():
+            _fail(f"bridge contract not found at {BRIDGE_SRC}")
 
-    plan = build_plan(args.mode, args.adapter)
+        # Law 5 + hook pack: the installed layout PROMISES hunt-os/roles/ (all
+        # seven roles) and hunt-os/hooks/ (wrapper + gate). A broken source
+        # workspace must fail the install, not ship a layer missing its doctrine
+        # or its mouth guard.
+        missing_roles = [r for r in REQUIRED_ROLES
+                         if not (ROLES_SRC / f"{r}.md").is_file()]
+        if missing_roles:
+            _fail(f"role doctrine incomplete at {ROLES_SRC}: missing "
+                  f"{', '.join(missing_roles)}")
+        if not GATE_SRC.is_file():
+            _fail(f"claim gate not found at {GATE_SRC}")
+        if not HOOK_WRAPPER_SRC.is_file():
+            _fail(f"hook wrapper not found at {HOOK_WRAPPER_SRC}")
+        if not PY_HOOK_WRAPPER_SRC.is_file():
+            _fail(f"Python hook wrapper not found at {PY_HOOK_WRAPPER_SRC}")
+        if not UNIVERSAL_HOOK_SRC.is_file():
+            _fail(f"universal hook contract not found at {UNIVERSAL_HOOK_SRC}")
+        plan = build_plan(args.mode, args.adapter, skills_dir)
 
     # ADDITIVE LAW: refuse to touch anything that is not ours.
     old_manifest = _load_manifest(skills_dir)
@@ -746,10 +875,12 @@ def build_parser() -> argparse.ArgumentParser:
              "default: project",
     )
     parser.add_argument(
-        "--mode", choices=("router", "native"), default="router",
+        "--mode", choices=("router", "native", "mcp"), default="router",
         help="router = one 'hunt-os' skill with the full corpus nested inside "
              "(default); native = one hunt-<category>-<name> skill per skill "
-             "PLUS the router",
+             "PLUS the router; mcp = ONLY the MCP server + its generated "
+             ".mcp.json (no skills tree: for harnesses whose loader cannot "
+             "resolve nested skill paths)",
     )
     parser.add_argument(
         "--dir", default=None,

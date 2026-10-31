@@ -44,8 +44,25 @@ def _log(msg: str) -> None:
 
 
 def _app_dir() -> Path:
-    # server.py lives at <repo>/mcp/server.py
+    """The app/ directory, resolved for every layout this server ships in.
+
+    Three layouts, in resolution order:
+      1. <repo>/mcp/server.py            -> parents[1] / "app"   (source checkout)
+      2. <pkg>/_data/mcp/server.py       -> the installed package (wheel or
+         editable), where `huntos` is importable. No app/ dir exists there;
+         the package itself IS the app.
+      3. <skills-dir>/hunt-os/mcp/server.py -> an installed layer, where
+         neither a repo nor a package sits beside the file. The CLI is then
+         resolved by `hunt` on PATH (see resolve_cli).
+    """
     here = Path(__file__).resolve()
+    # 1. source checkout: <repo>/mcp/server.py
+    if (here.parents[1] / "app" / "pyproject.toml").is_file():
+        return here.parents[1] / "app"
+    # 2. inside the package: <pkg>/_data/mcp/server.py
+    if here.parents[1].name == "_data" and (here.parents[2] / "__init__.py").is_file():
+        return here.parents[2]
+    # 3. installed layer with no package beside it
     return here.parents[1] / "app"
 
 
@@ -54,6 +71,17 @@ def _app_src() -> Path:
 
 
 def _server_version() -> str:
+    """The installed huntos version, or "0.0.0" when it cannot be read.
+
+    Prefers the package's own metadata (importlib.metadata) so a wheel
+    install reports its real version without a checkout; falls back to
+    app/pyproject.toml for a source checkout.
+    """
+    try:
+        from importlib.metadata import version as _pkg_version
+        return _pkg_version("huntos")
+    except Exception:
+        pass
     try:
         text = (_app_dir() / "pyproject.toml").read_text(encoding="utf-8")
     except (OSError, IndexError):
