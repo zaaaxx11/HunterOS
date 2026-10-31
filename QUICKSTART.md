@@ -143,7 +143,7 @@ Leaving a phase requires its artifact on disk (sha256-stamped into the db).
 ## 4. First finding, then the ladder to proven-live
 
 ```bash
-hunt wave open 1 "parser,auth,state"
+hunt wave open 1 "parser,auth,state" --budget 40
 hunt finding add 1 "Unprotected drain() via operator key" Access --severity critical --action mutate
 hunt wave close --wave-id 1 --verdict continue
 hunt wave reaudit --wave-id 1 --summary "1 confirmed, 0 overturned"

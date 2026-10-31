@@ -128,8 +128,18 @@ CREATE TABLE IF NOT EXISTS waves (
     ev_verdict TEXT DEFAULT '',
     notes TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now')),
+    -- Iteration budget: how many iterations this wave may spend. NULL means
+    -- unbounded (the operator declared no limit). iterations_used is COMPUTED
+    -- by the CLI, never typed — the same law that makes findings_new computed.
+    -- budget_exhausted_at records when the counter hit the limit, so the
+    -- ledger can tell "never had a budget" from "ran out".
+    iteration_budget INTEGER,
+    iterations_used INTEGER NOT NULL DEFAULT 0,
+    budget_exhausted_at TEXT,
     UNIQUE(target_id, number),
-    CHECK (ev_verdict IN ('','continue','exhausted','pivot'))
+    CHECK (ev_verdict IN ('','continue','exhausted','pivot')),
+    CHECK (iteration_budget IS NULL OR iteration_budget >= 0),
+    CHECK (iterations_used >= 0)
 );
 
 CREATE TABLE IF NOT EXISTS lessons (
@@ -546,6 +556,24 @@ def connect(db_path: Optional[str] = None) -> sqlite3.Connection:
                 )
             except sqlite3.Error:
                 pass
+        # Iteration-budget migration (guarded, idempotent, same pattern): dbs
+        # created before the budget columns get them on open. A legacy wave
+        # simply reads NULL (unbounded) until the operator sets a budget.
+        wave_cols = {
+            r[1] for r in conn.execute("PRAGMA table_info(waves)").fetchall()
+        }
+        for column, ddl in (
+            ("iteration_budget", "ALTER TABLE waves ADD COLUMN iteration_budget INTEGER"),
+            ("iterations_used",
+             "ALTER TABLE waves ADD COLUMN iterations_used INTEGER NOT NULL DEFAULT 0"),
+            ("budget_exhausted_at",
+             "ALTER TABLE waves ADD COLUMN budget_exhausted_at TEXT"),
+        ):
+            if column not in wave_cols:
+                try:
+                    conn.execute(ddl)
+                except sqlite3.Error:
+                    pass
         lead_cols = {r[1] for r in conn.execute("PRAGMA table_info(leads)").fetchall()}
         if "surface_id" not in lead_cols:
             try:
@@ -918,7 +946,12 @@ def add_finding(conn: sqlite3.Connection, target_id: int, title: str, klass: str
         (target_id,),
     ).fetchone()
     if open_wave_row is not None:
+        # The wave's iteration budget gates new work: a spent wave refuses the
+        # finding rather than letting the hunt keep spending past its limit.
+        require_wave_budget(conn, open_wave_row["id"])
         conn.execute("UPDATE findings SET wave_id=? WHERE id=?", (open_wave_row["id"], cur.lastrowid))
+        spend_iteration(conn, open_wave_row["id"], 1,
+                        what=f"finding add: {title[:60]}")
     # E12: internal callers (promote_lead) pass commit=False and commit the
     # whole promote as ONE transaction — two commits left a crash window that
     # stranded an orphan finding (lead_id NULL) with the lead still promotable.
@@ -1513,6 +1546,17 @@ def mutate_lead(conn: sqlite3.Connection, lead_id: int, variable: str, old_value
     log_event(conn, lead["target_id"], "lead_mutated",
               f"{_lead_labeled(lead_id)} {variable}: {old_value!r} -> {new_value!r} "
               f"result={result}" + (f" followup_precondition_id={followup_id}" if followup_id else ""))
+    # A lead mutation is one iteration of the hunt: it spends the budget of the
+    # target's open wave. The gate runs FIRST, so a spent wave refuses the
+    # mutation instead of recording work that should not have started.
+    open_wave_row = conn.execute(
+        "SELECT id FROM waves WHERE target_id=? AND ev_verdict='' ORDER BY number DESC LIMIT 1",
+        (lead["target_id"],),
+    ).fetchone()
+    if open_wave_row is not None:
+        require_wave_budget(conn, open_wave_row["id"])
+        spend_iteration(conn, open_wave_row["id"], 1,
+                        what=f"lead mutate: {_lead_labeled(lead_id)} {variable}")
     conn.commit()
     return mutation_id
 
@@ -2062,6 +2106,20 @@ def find_contradictions(conn: sqlite3.Connection, target_id: int) -> list:
         (target_id,),
     ).fetchall():
         flags.append(f"!! wave {w['number']} continued with 0 new findings")
+    # Iteration budget: a wave that ran out of budget while its verdict is still
+    # open is a stall the ledger should name, not something the operator has to
+    # remember. Report-only — the gate is what blocks, this is what tells you.
+    for w in conn.execute(
+        "SELECT number, iterations_used, iteration_budget FROM waves "
+        "WHERE target_id=? AND ev_verdict='' AND iteration_budget IS NOT NULL "
+        "AND iterations_used >= iteration_budget ORDER BY number",
+        (target_id,),
+    ).fetchall():
+        flags.append(
+            f"!! wave {w['number']} iteration budget exhausted "
+            f"({w['iterations_used']}/{w['iteration_budget']}) — close it with a "
+            f"recorded verdict or raise the budget with a reason"
+        )
     t = get_target(conn, target_id)
     if t["phase"] in ("report", "retro"):
         proven = conn.execute(
@@ -2153,8 +2211,15 @@ def get_roe(conn: sqlite3.Connection, target_id: int):
 
 # --- waves ---
 
-def open_wave(conn: sqlite3.Connection, target_id: int, lanes: str) -> int:
-    """Wave N+1 is LOCKED until wave N has ev_verdict AND re-audit recorded."""
+def open_wave(conn: sqlite3.Connection, target_id: int, lanes: str,
+              iteration_budget: "int | None" = None) -> int:
+    """Wave N+1 is LOCKED until wave N has ev_verdict AND re-audit recorded.
+
+    `iteration_budget` is the number of iterations this wave may spend
+    (probes, lead mutations, oracle runs, lane dispatches). None means
+    unbounded — the operator declared no limit, which is a decision the
+    ledger records rather than a default it invents.
+    """
     t = _require_active_target(conn, target_id)
     # Phase scoping: waves are hunting-phase work (verify may finish one out).
     if t["phase"] not in ("hunting", "verify"):
@@ -2181,8 +2246,9 @@ def open_wave(conn: sqlite3.Connection, target_id: int, lanes: str) -> int:
             )
         next_number = last["number"] + 1
     cur = conn.execute(
-        "INSERT INTO waves (target_id, number, lanes, reaudit_done) VALUES (?, ?, ?, 0)",
-        (target_id, next_number, lanes),
+        "INSERT INTO waves (target_id, number, lanes, reaudit_done, iteration_budget) "
+        "VALUES (?, ?, ?, 0, ?)",
+        (target_id, next_number, lanes, iteration_budget),
     )
     # B-L27: retro-link findings born in the wave GAP (promoted between waves,
     # wave_id NULL) to the wave that just opened, so close_wave economics count
@@ -2195,6 +2261,125 @@ def open_wave(conn: sqlite3.Connection, target_id: int, lanes: str) -> int:
     log_event(conn, target_id, "wave_opened", f"wave {next_number} lanes={lanes}")
     conn.commit()
     return int(cur.lastrowid)
+
+
+def set_wave_budget(conn: sqlite3.Connection, wave_id: int, budget: "int | None",
+                    reason: str) -> None:
+    """Declare (or clear) a wave's iteration budget.
+
+    Raising a budget mid-wave is legal but never silent: the reason is
+    required and lands in the event log beside the old and new values, so
+    "the budget grew because the lead looked promising" is a recorded
+    decision rather than a quiet edit.
+    """
+    if budget is not None and (
+        isinstance(budget, bool) or not isinstance(budget, int) or budget < 0
+    ):
+        raise ValueError(
+            f"BLOCKED: iteration budget must be a non-negative integer or None; "
+            f"got {budget!r}"
+        )
+    if not reason or not reason.strip():
+        raise ValueError(
+            "BLOCKED: changing an iteration budget requires a reason — "
+            "why the limit moves, recorded beside the change"
+        )
+    wave = _row(conn, "SELECT * FROM waves WHERE id = ?", (wave_id,),
+                label=f"wave #{wave_id}")
+    _require_active_target(conn, wave["target_id"])
+    old = wave["iteration_budget"]
+    used = wave["iterations_used"] or 0
+    if budget is not None and budget < used:
+        raise ValueError(
+            f"BLOCKED: cannot set the budget to {budget} — the wave already spent "
+            f"{used} iterations. Lowering a budget below spend would hide work "
+            f"that already happened | NEXT: hunt wave budget --wave-id {wave_id} "
+            f"--set {used} --reason \"...\""
+        )
+    conn.execute("UPDATE waves SET iteration_budget=? WHERE id=?", (budget, wave_id))
+    # Clearing the exhaustion stamp when the budget moves above spend: the wave
+    # is no longer out of budget, and a stale stamp would keep blocking work.
+    if budget is None or budget > used:
+        conn.execute("UPDATE waves SET budget_exhausted_at=NULL WHERE id=?", (wave_id,))
+    log_event(conn, wave["target_id"], "wave_budget_set",
+              f"wave {wave_id} budget {old} -> {budget} (used={used}) "
+              f"reason: {reason.strip()}")
+    conn.commit()
+
+
+def wave_budget(conn: sqlite3.Connection, wave_id: int) -> dict:
+    """The wave's budget state: {budget, used, remaining, exhausted}."""
+    wave = _row(conn, "SELECT * FROM waves WHERE id = ?", (wave_id,),
+                label=f"wave #{wave_id}")
+    budget = wave["iteration_budget"]
+    used = wave["iterations_used"] or 0
+    remaining = None if budget is None else max(0, budget - used)
+    return {
+        "wave_id": wave_id,
+        "budget": budget,
+        "used": used,
+        "remaining": remaining,
+        "exhausted": budget is not None and used >= budget,
+        "exhausted_at": wave["budget_exhausted_at"],
+    }
+
+
+def require_wave_budget(conn: sqlite3.Connection, wave_id: "int | None") -> None:
+    """Refuse new work on a wave whose iteration budget is spent.
+
+    This is the gate. It mirrors the wave N+1 lock: a phase transition (or a
+    new unit of work) is refused until a recorded condition is satisfied —
+    here, the condition is that the wave still has iterations left, and the
+    way out is a recorded verdict, not more pushing.
+    """
+    if wave_id is None:
+        return  # unbudgeted work outside any wave: nothing to gate on
+    state = wave_budget(conn, wave_id)
+    if not state["exhausted"]:
+        return
+    raise ValueError(
+        f"BLOCKED: wave #{wave_id} iteration budget exhausted "
+        f"({state['used']}/{state['budget']} used) — close the wave with a "
+        f"recorded verdict or raise the budget explicitly. "
+        f"| NEXT: hunt wave close --wave-id {wave_id} --verdict exhausted "
+        f"(or: hunt wave budget --wave-id {wave_id} --set <n> --reason \"...\")"
+    )
+
+
+def spend_iteration(conn: sqlite3.Connection, wave_id: "int | None",
+                    n: int = 1, what: str = "") -> dict:
+    """Consume n iterations of the wave's budget and log the spend.
+
+    The counter is computed here and nowhere else — an operator never types
+    it, the same law that makes findings_new computed rather than declared.
+    Returns the post-spend state so callers can report it.
+    """
+    if wave_id is None:
+        return {"wave_id": None, "budget": None, "used": 0,
+                "remaining": None, "exhausted": False, "exhausted_at": None}
+    if isinstance(n, bool) or not isinstance(n, int) or n < 1:
+        raise ValueError(f"BLOCKED: iteration spend must be a positive integer; got {n!r}")
+    wave = _row(conn, "SELECT * FROM waves WHERE id = ?", (wave_id,),
+                label=f"wave #{wave_id}")
+    _require_active_target(conn, wave["target_id"])
+    budget = wave["iteration_budget"]
+    used = (wave["iterations_used"] or 0) + n
+    exhausted_at = wave["budget_exhausted_at"]
+    if budget is not None and used >= budget and exhausted_at is None:
+        exhausted_at = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "UPDATE waves SET iterations_used=?, budget_exhausted_at=? WHERE id=?",
+        (used, exhausted_at, wave_id),
+    )
+    detail = f"wave {wave_id} +{n} (used={used}"
+    if budget is not None:
+        detail += f"/{budget}"
+    detail += ")"
+    if what:
+        detail += f" {what}"
+    log_event(conn, wave["target_id"], "wave_iteration_spent", detail)
+    conn.commit()
+    return wave_budget(conn, wave_id)
 
 
 def record_reaudit(conn: sqlite3.Connection, wave_id: int, summary: str = "") -> None:

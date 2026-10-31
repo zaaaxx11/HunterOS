@@ -38,9 +38,12 @@ Commands:
                                              # run the PoC inside the ledger: exit code + output
                                              # tail recorded, file sha256 pinned at run time —
                                              # a PoC that never ran clean cannot back a promotion
-  hunt wave open <target_id> <lanes>         # BLOCKED until previous wave closed properly
+  hunt wave open <target_id> <lanes> [--budget N]
+                                             # BLOCKED until previous wave closed properly;
+                                             # --budget N = iteration budget for this wave
   hunt wave close --wave-id N --verdict <continue|exhausted|pivot>   # findings_new is computed from wave-linked findings
   hunt wave reaudit --wave-id N --summary "..."   # min 20 chars; confirmed/overturned counted from the DB
+  hunt wave budget --wave-id N [--set M --reason "..."]   # show or change a wave's iteration budget
   hunt report <target_id> [--out report.md]   # --out also logs the disclosure_report artifact
   hunt verify-report <file>                  # recompute the report body's sha256 and compare
                                              # against the hunt-report footer (BLOCKED on
@@ -515,25 +518,33 @@ def cmd_artifact(args, conn) -> int:
 
 def cmd_wave(args, conn) -> int:
     if args.action == "open":
-        wid = db.open_wave(conn, args.target_id, args.lanes)
+        wid = db.open_wave(conn, args.target_id, args.lanes,
+                           iteration_budget=args.budget)
         w = db.list_waves(conn, args.target_id)[-1]
-        print(f"wave #{wid} opened (number {w['number']}) lanes={args.lanes}")
+        budget_txt = ("unbounded" if args.budget is None
+                      else f"budget={args.budget} iterations")
+        print(f"wave #{wid} opened (number {w['number']}) lanes={args.lanes} {budget_txt}")
         _show_receipt(f"opened wave #{wid}", f"hunt brief {args.target_id}")
     elif args.action == "close":
         db.close_wave(conn, args.wave_id, args.verdict)
         w = conn.execute(
-            "SELECT findings_new, ev_verdict FROM waves WHERE id=?",
+            "SELECT findings_new, ev_verdict, iterations_used, iteration_budget "
+            "FROM waves WHERE id=?",
             (args.wave_id,),
         ).fetchone()
+        spend = (f" iterations={w['iterations_used']}"
+                 + (f"/{w['iteration_budget']}" if w["iteration_budget"] is not None else ""))
         if w["ev_verdict"] == "exhausted":
             # L2.5: the economic stop ARCHIVED the target (existing kernel law,
             # unchanged) — the echo must say so instead of a bare "closed".
             print(
                 f"wave #{args.wave_id} closed findings_new={w['findings_new']} "
                 f"verdict=exhausted — target archived (economic stop; report/retro skipped)"
+                f"{spend}"
             )
         else:
-            print(f"wave #{args.wave_id} closed findings_new={w['findings_new']} verdict={args.verdict}")
+            print(f"wave #{args.wave_id} closed findings_new={w['findings_new']} "
+                  f"verdict={args.verdict}{spend}")
         _show_receipt(f"closed wave #{args.wave_id} verdict={args.verdict}",
                         f"hunt wave reaudit --wave-id {args.wave_id} --summary \"...\"")
     elif args.action == "reaudit":
@@ -545,6 +556,28 @@ def cmd_wave(args, conn) -> int:
         db.record_reaudit(conn, args.wave_id, args.summary)
         print(f"wave #{args.wave_id} re-audit recorded: {args.summary}")
         _show_receipt(f"re-audited wave #{args.wave_id}", "hunt status")
+    elif args.action == "budget":
+        if args.set_budget is None:
+            state = db.wave_budget(conn, args.wave_id)
+            if state["budget"] is None:
+                print(f"wave #{args.wave_id} iteration budget: unbounded "
+                      f"(used={state['used']})")
+            else:
+                print(f"wave #{args.wave_id} iteration budget: "
+                      f"{state['used']}/{state['budget']} used "
+                      f"(remaining={state['remaining']})"
+                      + (" EXHAUSTED" if state["exhausted"] else ""))
+            return 0
+        if not args.reason:
+            raise ValueError(
+                "BLOCKED: --set requires --reason — why the budget moves, "
+                "recorded beside the change"
+            )
+        db.set_wave_budget(conn, args.wave_id, args.set_budget, args.reason)
+        state = db.wave_budget(conn, args.wave_id)
+        print(f"wave #{args.wave_id} iteration budget set to {state['budget']} "
+              f"(used={state['used']}) reason: {args.reason}")
+        _show_receipt(f"wave #{args.wave_id} budget={state['budget']}", "hunt status")
     return 0
 
 
@@ -1087,6 +1120,19 @@ def cmd_fuzz(args, conn) -> int:
     truncated = False
     flagged = []  # (param_name, probe_row, baseline_status)
     total = 0
+    # The wave's iteration budget also caps probes: a spent wave refuses the
+    # battery before any request goes out, and every probe fired spends one
+    # iteration. `--max` stays the per-invocation cap; the wave budget is the
+    # per-wave cap. Both apply — whichever runs out first stops the work.
+    wave_id = None
+    if args.target_id is not None:
+        open_wave_row = conn.execute(
+            "SELECT id FROM waves WHERE target_id=? AND ev_verdict='' "
+            "ORDER BY number DESC LIMIT 1", (args.target_id,),
+        ).fetchone()
+        if open_wave_row is not None:
+            wave_id = open_wave_row["id"]
+            db.require_wave_budget(conn, wave_id)
     for param in params:
         if budget <= 0:
             truncated = True
@@ -1114,6 +1160,9 @@ def cmd_fuzz(args, conn) -> int:
             db.log_event(conn, args.target_id, "fuzz_probe",
                          detail=f"{param_name}={r['payload_name']} status={r['status']} "
                                 f"{r['elapsed_ms']}ms sha={r['body_hash']}")
+            if wave_id is not None:
+                db.spend_iteration(conn, wave_id, 1,
+                                   what=f"fuzz probe: {param_name}={r['payload_name']}")
             if id(r) in anomalous:
                 flagged.append((param_name, r, baseline_status))
     conn.commit()
@@ -2048,6 +2097,9 @@ def main(argv=None) -> int:
                                          "closed AND re-audited)")
     pwo.add_argument("target_id", type=int)
     pwo.add_argument("lanes")
+    pwo.add_argument("--budget", type=int, default=None,
+                     help="iteration budget for this wave (probes, lead mutations, "
+                          "oracle runs). Omit for unbounded.")
     pwo.set_defaults(fn=cmd_wave)
 
     pwc = pw_sub.add_parser("close", help="close a wave with a verdict (findings_new is computed "
@@ -2060,6 +2112,15 @@ def main(argv=None) -> int:
     pwr.add_argument("--wave-id", dest="wave_id", type=int, required=True)
     pwr.add_argument("--summary", required=True)
     pwr.set_defaults(fn=cmd_wave)
+
+    pwb = pw_sub.add_parser("budget", help="show or change a wave's iteration budget "
+                                           "(a change requires a recorded reason)")
+    pwb.add_argument("--wave-id", dest="wave_id", type=int, required=True)
+    pwb.add_argument("--set", dest="set_budget", type=int, default=None,
+                     help="new budget (non-negative integer; omit to only show)")
+    pwb.add_argument("--reason", default="",
+                     help="why the budget changes (required with --set)")
+    pwb.set_defaults(fn=cmd_wave)
 
     pr = sub.add_parser("report", help="generate the target's disclosure report (markdown, "
                                        "sha256-fingerprinted; --out also stamps the artifact)")

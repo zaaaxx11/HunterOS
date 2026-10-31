@@ -302,6 +302,14 @@ def _argv_wave_reaudit(a: dict) -> list[str]:
     ]
 
 
+def _argv_wave_budget(a: dict) -> list[str]:
+    out = ["wave", "budget", f"--wave-id={a['wave_id']}"]
+    if a.get("set") is not None:
+        out.append(f"--set={a['set']}")
+        _opt(out, a, "reason", "--reason")
+    return out
+
+
 # Schema helpers
 def _s(desc: str, **kw) -> dict:
     d = {"type": "string", "description": desc, "maxLength": MAX_STR}
@@ -574,6 +582,23 @@ TOOLS: dict[str, dict] = {
             ["wave_id", "summary"],
         ),
         "argv": _argv_wave_reaudit,
+    },
+    "hunt_wave_budget": {
+        "description": (
+            "Show a wave's iteration budget, or change it. Changing it requires "
+            "a reason, which is recorded beside the old and new values."
+        ),
+        "annotations": _WRITE,
+        "inputSchema": _obj(
+            {
+                "wave_id": _i("Wave id."),
+                "set": {"type": "integer", "minimum": 0,
+                        "description": "New budget (omit to only show)."},
+                "reason": _s("Why the budget changes (required with set)."),
+            },
+            ["wave_id"],
+        ),
+        "argv": _argv_wave_budget,
     },
 }
 
