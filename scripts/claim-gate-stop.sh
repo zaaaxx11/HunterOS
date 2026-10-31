@@ -9,14 +9,13 @@
 # events); the block signal is the exit code, stderr carries the reason.
 #
 # Behavior:
-#   0 = pass (claim gate found no unbacked claims, or gate intentionally
-#       downgraded — see below)
+#   0 = pass (claim gate found no unbacked claims, or the operator explicitly
+#       opted out with HUNT_STOP_GATE_ALLOW_NO_DB=1 — see below)
 #   2 = veto (BLOCKED: reason on stderr, Claude continues the turn)
 #
-# Fail-closed cases (-> exit 2): gate file missing, stdin not JSON.
-# Documented downgrade (-> exit 0 + warning on stderr): no hunt.db resolvable
-# (HUNT_DB unset AND default ~/.huntos/hunt.db absent) — the gate would veto
-# every turn on machines without a ledger, so we pass with a warning instead.
+# Fail-closed cases (-> exit 2): gate file missing, stdin not JSON, and a
+# strong claim with no resolvable ledger db (an unverifiable claim cannot
+# pass). The only downgrade is the explicit HUNT_STOP_GATE_ALLOW_NO_DB=1.
 # stop_hook_active=true -> exit 0 (avoid the 8-continuation-cap infinite loop).
 #
 # Env: HUNT_DB (passthrough), HUNT_PYTHON (default python3),
@@ -95,12 +94,23 @@ if ! grep -q -E '\bPROVEN\b|\bEXPLOITABLE\b|admin takeover' "$MSG_FILE"; then
     exit 0
 fi
 
-# Text carries a strong claim but no ledger db is resolvable -> documented
-# downgrade: pass with a warning (a hard veto on every Stop would make the
-# plugin unusable on machines without `hunt init`). Operator signal, not proof.
+# Text carries a strong claim. The gate is the only judge of whether the
+# ledger backs it, and it opens the db read-only: with no resolvable db the
+# claim CANNOT be verified, so it cannot pass. Fail closed (exit 2) — the
+# previous documented downgrade (exit 0 + warning) was the one place in the
+# gate chain that let an unbacked PROVEN through.
+#
+# The escape hatch is explicit and deliberate: HUNT_STOP_GATE_ALLOW_NO_DB=1
+# restores the old pass-with-warning behaviour for operators who run the hook
+# on machines with no ledger at all. Absent that flag, an unverifiable claim
+# is a veto.
 if [ -z "${HUNT_DB:-}" ] && [ ! -f "$HOME/.huntos/hunt.db" ]; then
-    echo "hunt-os claim gate: strong claim markers present but no ledger db found (set HUNT_DB or run hunt init) - gate check SKIPPED, claims unverified" >&2
-    exit 0
+    if [ "${HUNT_STOP_GATE_ALLOW_NO_DB:-}" = "1" ]; then
+        echo "hunt-os claim gate: strong claim markers present but no ledger db found (set HUNT_DB or run hunt init) - gate check SKIPPED, claims unverified (HUNT_STOP_GATE_ALLOW_NO_DB=1)" >&2
+        exit 0
+    fi
+    echo "BLOCKED: strong claim markers present but no ledger db is resolvable (set HUNT_DB or run hunt init) - an unverifiable claim cannot pass the gate" >&2
+    exit 2
 fi
 
 exec "$PY" "$GATE" "$MSG_FILE"

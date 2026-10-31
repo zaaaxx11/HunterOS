@@ -49,6 +49,7 @@ ROLES_SRC = DATA_ROOT / "roles"                         # the lane-role doctrine
 GATE_SRC = DATA_ROOT / "bin" / "claim_gate.py"          # the mouth guard
 HOOK_WRAPPER_SRC = DATA_ROOT / "hooks" / "claim_gate_wrapper.sh"
 PY_HOOK_WRAPPER_SRC = DATA_ROOT / "hooks" / "claim_gate_wrapper.py"
+UNIVERSAL_HOOK_SRC = DATA_ROOT / "hooks" / "hunt_os_hook.py"  # the 4-point contract
 
 MANIFEST_NAME = ".hunt-os-manifest.json"
 ROUTER_DIR = "hunt-os"
@@ -223,7 +224,8 @@ def _source_files() -> "list[tuple[str, Path]]":
     files.extend(
         (p.relative_to(DATA_ROOT).as_posix(), p) for p in _iter_files(ROLES_SRC)
     )
-    for extra in (GATE_SRC, HOOK_WRAPPER_SRC, PY_HOOK_WRAPPER_SRC):
+    for extra in (GATE_SRC, HOOK_WRAPPER_SRC, PY_HOOK_WRAPPER_SRC,
+                  UNIVERSAL_HOOK_SRC):
         if extra.is_file():
             files.append((extra.relative_to(DATA_ROOT).as_posix(), extra))
     return files
@@ -367,10 +369,14 @@ def build_plan(mode: str, adapter: str = "claude-code") -> "list[tuple[str, byte
 
     # hook pack -> hunt-os/hooks/ (both modes): POSIX and cross-platform Python
     # wrappers plus the gate BYTE-COPIED at install time, all manifest-tracked.
+    # The universal 4-point contract travels too, so every harness translator
+    # (claude-code/zcode hooks.json, hermes plugin, codex AGENTS.md, opencode)
+    # wires the SAME decisions instead of re-implementing them.
     for src, dest_name in (
             (HOOK_WRAPPER_SRC, "claim_gate_wrapper.sh"),
             (PY_HOOK_WRAPPER_SRC, "claim_gate_wrapper.py"),
-            (GATE_SRC, "claim_gate.py")):
+            (GATE_SRC, "claim_gate.py"),
+            (UNIVERSAL_HOOK_SRC, "hunt_os_hook.py")):
         data = src.read_bytes()
         plan.append((f"{ROUTER_DIR}/{HOOKS_DEST}/{dest_name}", data,
                      src.relative_to(DATA_ROOT).as_posix(),
@@ -533,6 +539,8 @@ def cmd_install(args: argparse.Namespace) -> int:
         _fail(f"hook wrapper not found at {HOOK_WRAPPER_SRC}")
     if not PY_HOOK_WRAPPER_SRC.is_file():
         _fail(f"Python hook wrapper not found at {PY_HOOK_WRAPPER_SRC}")
+    if not UNIVERSAL_HOOK_SRC.is_file():
+        _fail(f"universal hook contract not found at {UNIVERSAL_HOOK_SRC}")
 
     plan = build_plan(args.mode, args.adapter)
 
