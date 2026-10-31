@@ -214,6 +214,18 @@ COMMAND_REGISTRY: dict[str, dict] = {
         "examples": ("hunt coverage 1",),
         "next_hint": "hunt coverage <target>",
     },
+    "atlas": {
+        "group": "leads",
+        "help": "crypto attack atlas A1-A18: list / show / match / coverage / seed",
+        "actions": ("list", "show", "match", "coverage", "seed"),
+        "read_only": True,
+        "no_db": False,
+        "examples": ("hunt atlas list --klass Oracle",
+                     "hunt atlas show A7",
+                     "hunt atlas match \"share price jumps on deposit\"",
+                     "hunt atlas coverage"),
+        "next_hint": "hunt atlas list",
+    },
     "chain": {
         "group": "leads",
         "help": "the 0-day claim engine: add / link / show / novelty",
