@@ -12,6 +12,7 @@ improvised names.
 | `app/src/huntos/_data/idea/skills/web3/crypto-attack-atlas/SKILL.md` | the router skill |
 | `.../crypto-attack-atlas/data/atlas.json` | machine-readable atlas (`huntos-atlas/1`) |
 | `.../crypto-attack-atlas/references/attack-families.md` | all 18 families, narrated |
+| `.../crypto-attack-atlas/references/toolchain.md` | consolidated tool inventory + commands, mapped to families |
 | `.../crypto-attack-atlas/scripts/atlas.py` | standalone reader (no CLI needed) |
 | `app/src/huntos/core/atlas.py` | loader + `match`/`coverage`/`seed_leads` (read-only) |
 | `app/src/huntos/cli/main.py` (`cmd_atlas`) | the `hunt atlas` verb |

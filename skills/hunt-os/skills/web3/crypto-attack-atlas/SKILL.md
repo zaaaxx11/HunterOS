@@ -132,6 +132,8 @@ SQLite, never by stuffing a new name into a title.
 
 - `references/attack-families.md` — all 18 families with variants, signals,
   commands, mitigations, and real cases.
+- `references/toolchain.md` — the consolidated tool inventory (install + run
+  line per tool), grouped by the question it answers, mapped to families.
 - `data/atlas.json` — the machine-readable atlas (`huntos-atlas/1`).
 - `scripts/atlas.py` — standalone reader for harnesses without the CLI:
   `python3 scripts/atlas.py list|show|match|klass`.
