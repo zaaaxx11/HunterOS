@@ -266,6 +266,7 @@ hunt doctor               # workspace preflight
 | `install.sh`, `install.ps1` | Release installers |
 | `QUICKSTART.md`, `app/WALKTHROUGH.md` | Operator guides |
 | `docs/HUNT-ADAPTER-1.md` | Adapter protocol specification |
+| `docs/ATLAS.md` | The crypto attack atlas (18 families) behind `hunt atlas` |
 | `templates/`, `checks/` | Report templates and pre-report checklist |
 | `.github/workflows/` | CI: tests on Linux/Windows, release on `v*` tags |
 | `examples/practice_target/` | Educational vulnerable web app for practice hunts |

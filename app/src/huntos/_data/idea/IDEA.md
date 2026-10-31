@@ -114,6 +114,13 @@ contract-assessment framework is available through:
 skill_view(name='black-swan-engine')
 ```
 
+For crypto/EVM work, `crypto-attack-atlas` is the routing map: 18 attack
+families (A1–A18) bound to a ledger `klass`, each with its signals, detection
+commands, mitigations, and the sibling skill that finishes the job. Read it
+through the read-only CLI (`hunt atlas show <family>`, `hunt atlas coverage`)
+so the family you test is the family you file. The atlas may print a
+`hunt lead add` line; it never records one.
+
 Role-specific or privileged doctrine is intentionally not part of this public
 file.
 

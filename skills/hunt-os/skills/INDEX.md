@@ -38,6 +38,7 @@ Five categories: `recon/`, `web2/`, `web3/`, `cdc/`, `verification/`.
 
 ## web3/ — blockchain and protocol audit
 
+- crypto-attack-atlas — the routing atlas: 18 attack families (A1–A18) -> klass -> detection commands -> the skill that finishes it; `hunt atlas` reads it
 - black-swan-engine — 19 universal laws of EVM vulnerability (CDC backbone)
 - evm-contract-audit — EVM contract audit against 875 hack patterns
 - smart-contract-exploit-pocs — exploit PoC library and construction

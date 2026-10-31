@@ -167,7 +167,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ..core import db, fuzz
+from ..core import atlas, db, fuzz
 from ..core.models import PHASE_ARTIFACTS, ROE_ACTIONS, SEVERITY
 from ..conductor.adapter import MockAdapter
 from .errors import (
@@ -185,7 +185,7 @@ SURFACE_KINDS = db.SURFACE_KINDS
 # Read-only commands run even when the workspace lock mismatches (hard warning
 # instead of BLOCKED) — inspecting state must not require rebinding first.
 # Simple command names (nothing but reads behind them):
-READ_ONLY_COMMANDS = ("verify-report", "status", "brief", "next", "doctor", "coverage", "help")
+READ_ONLY_COMMANDS = ("verify-report", "status", "brief", "next", "doctor", "coverage", "atlas", "help")
 # Groups that MIX reads and writes: the ACTION decides, not the command name —
 # `hunt target add` / `hunt klass add` / `hunt run start` stay lock-blocked
 # while their `list` / `show` / `novelty` / `status` actions pass with a warning.
@@ -934,6 +934,112 @@ def cmd_coverage(args, conn) -> int:
         name = b["name"] if isinstance(b, dict) else b
         print(f"!! {name}")
     return 0
+
+
+def cmd_atlas(args, conn) -> int:
+    """The crypto attack atlas: routing data for one bounded hypothesis.
+
+    Read-only by construction (the verb is in READ_ONLY_COMMANDS): nothing here
+    writes the ledger. `coverage` reads recorded facts to show which families
+    the hunt has not touched, and `seed` PRINTS the `hunt lead add` line an
+    operator or agent may then run through the normal door — the atlas suggests,
+    the CLI still decides, and the claim gate still guards the claim.
+    """
+    action = args.action
+    if action == "list":
+        data = atlas.load()
+        rows = data["families"]
+        if args.klass:
+            rows = [f for f in rows if f["klass"].lower() == args.klass.lower()]
+            if not rows:
+                raise ValueError(
+                    f"BLOCKED: no atlas family files under klass '{args.klass}' "
+                    f"| NEXT: hunt atlas list")
+        print(f"{'family':<7} {'klass':<12} {'incidents':>9} {'usd(parsed)':>14}  name")
+        for f in rows:
+            print(f"{f['id']:<7} {f['klass']:<12} {f.get('incidents_total', 0):>9} "
+                  f"${f.get('loss_usd_parsed', 0):>13,.0f}  {f['name']}")
+        return 0
+
+    if action == "show":
+        f = atlas.get(args.ref)
+        if f is None:
+            raise ValueError(f"BLOCKED: no atlas family matches '{args.ref}' "
+                             f"| NEXT: hunt atlas list")
+        print(f"{f['id']} — {f['name']}   (klass: {f['klass']})")
+        print(f"\n{f['summary']}")
+        print(f"\nincidents: {f.get('incidents_total', 0)} | "
+              f"usd parsed: ${f.get('loss_usd_parsed', 0):,.0f} (lower bound)")
+        if f.get("swc"):
+            print("swc: " + ", ".join(f"{s['id']} {s['title']}" for s in f["swc"]))
+        if f.get("skills"):
+            print("skills: " + ", ".join(f["skills"]))
+        for label, key in (("VARIANTS", "variants"), ("SIGNALS", "signals"),
+                           ("DETECT / RUN", "detect"), ("MITIGATE", "mitigate")):
+            items = f.get(key) or []
+            if not items:
+                continue
+            print(f"\n{label}")
+            for it in items:
+                print(f"  - {it}")
+        if f.get("examples"):
+            print("\nREAL CASES")
+            for ex in f["examples"]:
+                amt = f"${ex['loss_usd']:,.0f}" if ex["loss_usd"] else (ex["loss_raw"] or "n/a")
+                print(f"  - {ex['date']} {ex['target']} — {amt}"
+                      f"{' (PoC)' if ex['poc'] else ''}")
+        print(f"\nNEXT: hunt lead add --target <id> --title '{f['id']} {f['name']}: ...'")
+        return 0
+
+    if action == "match":
+        text = " ".join(args.text)
+        ranked = atlas.match(text, top=args.top)
+        if not ranked:
+            print("(no atlas family matched — describe the observable, then: hunt atlas list)")
+            return 1
+        for fam, hits in ranked:
+            print(f"{fam['id']} {fam['name']}  ({fam['klass']}, {len(hits)} hit)")
+            print(f"  matched: {', '.join(hits)}")
+            print(f"  next: hunt atlas show {fam['id']}")
+        return 0
+
+    if action == "coverage":
+        target_id = args.target_id
+        if target_id is None:
+            active = [t for t in db.list_targets(conn) if t["phase"] != "archived"]
+            if len(active) != 1:
+                raise ValueError(
+                    "BLOCKED: pass a target id (more than one active target) "
+                    "| NEXT: hunt target list")
+            target_id = active[0]["id"]
+        findings = [dict(r) for r in db.list_findings(conn, target_id)]
+        leads = [dict(r) for r in db.list_leads(conn, target_id)]
+        cov = atlas.coverage(findings, leads)
+        print(f"target #{target_id} — atlas coverage across {len(cov['rows'])} families")
+        for r in cov["covered"]:
+            print(f"[finding {r['findings']:>2}] [lead {r['leads']:>2}] "
+                  f"{r['id']} {r['name']} ({r['klass']})")
+        print("blind spots (no finding and no lead):")
+        if not cov["uncovered"]:
+            print("(none — every atlas family has evidence, which is unusual: "
+                  "check the evidence ladder, presence is not proof)")
+        for r in cov["uncovered"]:
+            print(f"!! {r['id']} {r['name']} ({r['klass']}, "
+                  f"{r['incidents_total']} incidents in dataset)")
+        print("NEXT: hunt atlas show <family>  then  hunt atlas seed --family <family>")
+        return 0
+
+    if action == "seed":
+        f = atlas.get(args.family)
+        if f is None:
+            raise ValueError(f"BLOCKED: no atlas family matches '{args.family}' "
+                             f"| NEXT: hunt atlas list")
+        target = args.target_id if args.target_id is not None else "<TARGET_ID>"
+        for line in atlas.seed_leads(f):
+            print(line.replace("<TARGET_ID>", str(target)))
+        return 0
+
+    raise ValueError(f"BLOCKED: unknown atlas action '{action}' | NEXT: hunt atlas list")
 
 
 def cmd_chain(args, conn) -> int:
@@ -2144,6 +2250,36 @@ def main(argv=None) -> int:
                                            "(trust boundaries never probed)")
     pcov.add_argument("target_id", type=int)
     pcov.set_defaults(fn=cmd_coverage)
+
+    patl = sub.add_parser("atlas", help="crypto attack atlas A1-A18: list / show / match / "
+                                        "coverage / seed (read-only routing data)")
+    patl_sub = patl.add_subparsers(dest="action", required=True)
+
+    patl_l = patl_sub.add_parser("list", help="list the 18 attack families + incident evidence")
+    patl_l.add_argument("--klass", default=None,
+                        help="only families filing under this HUNT-OS klass")
+    patl_l.set_defaults(fn=cmd_atlas)
+
+    patl_s = patl_sub.add_parser("show", help="one family: signals, detect commands, mitigate, cases")
+    patl_s.add_argument("ref", help="A7 | a7 | reentrancy | 'Precision, rounding & arithmetic'")
+    patl_s.set_defaults(fn=cmd_atlas)
+
+    patl_m = patl_sub.add_parser("match", help="rank families against an observed symptom")
+    patl_m.add_argument("text", nargs="+", help="free-text symptom (quote it)")
+    patl_m.add_argument("--top", type=int, default=3)
+    patl_m.set_defaults(fn=cmd_atlas)
+
+    patl_c = patl_sub.add_parser("coverage", help="which atlas families the ledger already "
+                                                  "proves, and the blind spots")
+    patl_c.add_argument("target_id", type=int, nargs="?", default=None,
+                        help="target id (default: the single active target)")
+    patl_c.set_defaults(fn=cmd_atlas)
+
+    patl_se = patl_sub.add_parser("seed", help="print the `hunt lead add` line for a family "
+                                               "(prints only — you run it)")
+    patl_se.add_argument("--family", required=True, help="A7 | reentrancy | ...")
+    patl_se.add_argument("--target-id", dest="target_id", type=int, default=None)
+    patl_se.set_defaults(fn=cmd_atlas)
 
     pchain = sub.add_parser("chain", help="the 0-day claim engine: add / link / show / novelty")
     pchain_sub = pchain.add_subparsers(dest="action", required=True)

@@ -1,0 +1,1415 @@
+{
+ "schema": "huntos-atlas/1",
+ "generated_from": {
+  "incidents": 904,
+  "incidents_with_usd": 482,
+  "families": 18,
+  "swc_entries": 37,
+  "sources": [
+   "DeFiHackLabs",
+   "SlowMist Hacked",
+   "rekt.news",
+   "Chainalysis",
+   "SWC Registry",
+   "DeFiVulnLabs",
+   "Solcurity",
+   "crytic/building-secure-contracts"
+  ]
+ },
+ "caveats": [
+  "loss_usd_parsed is a LOWER BOUND: only incidents that state USD are summed; token-denominated losses are not converted.",
+  "Family counts are keyword-classified over root-cause prose: one incident can land in several families.",
+  "Use this atlas to pick the next test, not to claim a total industry loss."
+ ],
+ "keywords": {
+  "A1": [
+   "reentran",
+   "callback",
+   "erc777",
+   "read-only",
+   "readonly",
+   "nested call"
+  ],
+  "A2": [
+   "oracle",
+   "price",
+   "harga",
+   "getreserves",
+   "slot0",
+   "twap",
+   "stale",
+   "chainlink"
+  ],
+  "A3": [
+   "flashloan",
+   "flash loan",
+   "flash-loan",
+   "capital",
+   "modal besar"
+  ],
+  "A4": [
+   "access",
+   "auth",
+   "owner",
+   "admin",
+   "permission",
+   "onlyowner",
+   "initialize",
+   "tx.origin",
+   "unauthorized",
+   "rbac",
+   "setter"
+  ],
+  "A5": [
+   "logic",
+   "accounting",
+   "invariant",
+   "double count",
+   "state",
+   "akuntansi"
+  ],
+  "A6": [
+   "erc4626",
+   "share",
+   "share price",
+   "vault",
+   "donation",
+   "first deposit",
+   "inflate",
+   "convertto",
+   "deposit",
+   "redeem",
+   "previewredeem"
+  ],
+  "A7": [
+   "precision",
+   "rounding",
+   "decimal",
+   "overflow",
+   "underflow",
+   "cast",
+   "muldiv",
+   "divisi",
+   "pembulatan"
+  ],
+  "A8": [
+   "signature",
+   "permit",
+   "ecrecover",
+   "replay",
+   "nonce",
+   "eip-712",
+   "allowance",
+   "approval",
+   "tanda tangan"
+  ],
+  "A9": [
+   "proxy",
+   "upgrade",
+   "initializ",
+   "delegatecall",
+   "storage collision",
+   "uups",
+   "impl"
+  ],
+  "A10": [
+   "bridge",
+   "cross-chain",
+   "crosschain",
+   "relayer",
+   "merkle",
+   "proof",
+   "root",
+   "l2",
+   "message",
+   "jembatan"
+  ],
+  "A11": [
+   "fee-on-transfer",
+   "deflationary",
+   "rebasing",
+   "erc20",
+   "token",
+   "return false",
+   "hook",
+   "permit2"
+  ],
+  "A12": [
+   "liquidation",
+   "likuidasi",
+   "mev",
+   "sandwich",
+   "collateral",
+   "bad debt",
+   "emission"
+  ],
+  "A13": [
+   "slippage",
+   "deadline",
+   "minout",
+   "swap",
+   "path",
+   "calldata"
+  ],
+  "A14": [
+   "governance",
+   "proposal",
+   "voting",
+   "quorum",
+   "timelock",
+   "treasury",
+   "dao"
+  ],
+  "A15": [
+   "private key",
+   "kunci",
+   "compromised",
+   "phishing",
+   "multisig",
+   "hot wallet",
+   "7702",
+   "signer",
+   "devops"
+  ],
+  "A16": [
+   "supply chain",
+   "dependency",
+   "npm",
+   "cdn",
+   "dns",
+   "frontend",
+   "third-party"
+  ],
+  "A17": [
+   "transient",
+   "tstore",
+   "tload",
+   "eip-1153"
+  ],
+  "A18": [
+   "freeze",
+   "pause",
+   "blacklist",
+   "beku",
+   "halt",
+   "guardian"
+  ]
+ },
+ "families": [
+  {
+   "id": "A1",
+   "family": "reentrancy",
+   "name": "Reentrancy",
+   "klass": "Reentrancy",
+   "summary": "State is updated after an external call, so the callee re-enters before accounting settles.",
+   "variants": [
+    "classic single-function",
+    "cross-function",
+    "read-only (LP/oracle state seen mid-write)",
+    "callback token (ERC777/677/721 onERC721Received)"
+   ],
+   "signals": [
+    "external call before the sstore that settles the balance",
+    "no nonReentrant on a value-moving entry point",
+    "a view function another protocol reads while state is half-written"
+   ],
+   "detect": [
+    "slither . --detect reentrancy-eth,reentrancy-no-eth,reentrancy-benign,reentrancy-events",
+    "grep -rn 'call{value\\|\\.call(\\|transferFrom\\|safeTransferFrom' src/ | head -50",
+    "forge test --match-test invariant -vvv  (balance-conservation invariant)",
+    "trace the exploit tx: >1 hop back into the same contract in one tx"
+   ],
+   "mitigate": [
+    "checks-effects-interactions on every value path",
+    "nonReentrant on all entry points touching accounting",
+    "read oracle values from TWAP/cached state, never mid-transaction LP spot"
+   ],
+   "skills": [
+    "token-transfer-audit",
+    "evm-contract-audit",
+    "black-swan-engine"
+   ],
+   "swc": [
+    {
+     "id": "SWC-107",
+     "title": "Reentrancy",
+     "cwe": "CWE-841"
+    },
+    {
+     "id": "SWC-113",
+     "title": "DoS with Failed Call",
+     "cwe": "CWE-703"
+    }
+   ],
+   "incidents_total": 60,
+   "loss_usd_parsed": 92473138,
+   "examples": [
+    {
+     "date": "2023-07-30",
+     "target": "Curve",
+     "loss_usd": 41000000.0,
+     "loss_raw": "~ $41M",
+     "poc": true
+    },
+    {
+     "date": "2024-09-03",
+     "target": "Penpiexyz_io",
+     "loss_usd": 27348259.0,
+     "loss_raw": "11,113.6 ETH (~$27,348,259 USD)",
+     "poc": true
+    },
+    {
+     "date": "2022-11-10",
+     "target": "DFXFinance",
+     "loss_usd": 4000000.0,
+     "loss_raw": "$4M",
+     "poc": true
+    },
+    {
+     "date": "2023-02-10",
+     "target": "dForce",
+     "loss_usd": 3650000.0,
+     "loss_raw": "~$3.65M",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A2",
+   "family": "price-oracle-manipulation",
+   "name": "Price oracle manipulation",
+   "klass": "Oracle",
+   "summary": "The protocol trusts a price it can be made to move inside one transaction.",
+   "variants": [
+    "spot reserves",
+    "Uniswap v3 slot0",
+    "token balance as price",
+    "stale feed / missing sequencer check",
+    "thin-pool TWAP"
+   ],
+   "signals": [
+    "getReserves()/slot0()/balanceOf() used directly for valuation",
+    "no heartbeat or staleness check on the feed",
+    "no deviation bound between blocks",
+    "LP token accepted as collateral"
+   ],
+   "detect": [
+    "grep -rn 'getReserves\\|slot0\\|latestRoundData\\|latestAnswer' src/",
+    "forge test --fork-url $RPC  (push price in one block, assert borrow capacity)",
+    "check feed: answeredInRound, updatedAt age, decimals",
+    "slither . --detect arbitrary-send-erc20,unchecked-transfer"
+   ],
+   "mitigate": [
+    "Chainlink/Pyth with staleness + sequencer-uptime checks",
+    "TWAP >= 30min and a per-block deviation cap",
+    "circuit breaker on abnormal price delta",
+    "no LP spot price as collateral value"
+   ],
+   "skills": [
+    "defi-protocol-analysis",
+    "lending-protocol-fork-audit",
+    "evm-contract-audit"
+   ],
+   "swc": [
+    {
+     "id": "SWC-116",
+     "title": "Block values as a proxy for time",
+     "cwe": "CWE-829"
+    }
+   ],
+   "incidents_total": 163,
+   "loss_usd_parsed": 94967103,
+   "examples": [
+    {
+     "date": "2024-09-03",
+     "target": "Penpiexyz_io",
+     "loss_usd": 27348259.0,
+     "loss_raw": "11,113.6 ETH (~$27,348,259 USD)",
+     "poc": true
+    },
+    {
+     "date": "2024-06-10",
+     "target": "UwULend",
+     "loss_usd": 19300000.0,
+     "loss_raw": "19.3M",
+     "poc": true
+    },
+    {
+     "date": "2023-05-29",
+     "target": "Jimbo",
+     "loss_usd": 8000000.0,
+     "loss_raw": "~$8M",
+     "poc": true
+    },
+    {
+     "date": "2024-03-05",
+     "target": "Woofi",
+     "loss_usd": 8000000.0,
+     "loss_raw": "~8M",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A3",
+   "family": "flashloan-capital",
+   "name": "Flash-loan capital amplifier",
+   "klass": "Logic",
+   "summary": "Not a bug by itself: it removes the capital bound from every other family.",
+   "variants": [
+    "Aave/Balancer flash loan",
+    "flash swap",
+    "same-block borrow+repay"
+   ],
+   "signals": [
+    "any assumption that an attacker cannot hold a large balance for one block",
+    "no per-block / per-tx rate limit on borrow or mint"
+   ],
+   "detect": [
+    "forge test --fork-url $RPC with deal() sizing attacker capital to pool TVL",
+    "audit question: 'if the attacker has 100M for one block, what breaks?'"
+   ],
+   "mitigate": [
+    "design against unbounded transient capital",
+    "per-block caps, cooldowns, TWAP-based limits"
+   ],
+   "skills": [
+    "defi-protocol-analysis",
+    "cross-contract-chain-builder"
+   ],
+   "swc": [],
+   "incidents_total": 63,
+   "loss_usd_parsed": 21868156,
+   "examples": [
+    {
+     "date": "2024-11-19",
+     "target": "PolterFinance",
+     "loss_usd": 7000000.0,
+     "loss_raw": "$7M",
+     "poc": true
+    },
+    {
+     "date": "2026-10-24",
+     "target": "X100Senate",
+     "loss_usd": 4749726.1,
+     "loss_raw": "~4.75M USDT drained from the X100 treasury on Ethereum in a single atomic tx; th",
+     "poc": true
+    },
+    {
+     "date": "2022-12-11",
+     "target": "Lodestar",
+     "loss_usd": 4000000.0,
+     "loss_raw": "$4M",
+     "poc": true
+    },
+    {
+     "date": "2023-04-28",
+     "target": "0vix",
+     "loss_usd": 2000000.0,
+     "loss_raw": "~$2M",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A4",
+   "family": "access-control",
+   "name": "Access control / authorization",
+   "klass": "Access",
+   "summary": "A value-bearing function has no effective guard, or the guard is bypassable.",
+   "variants": [
+    "missing modifier on setter/init/mint",
+    "tx.origin auth",
+    "unprotected initialize (proxy takeover)",
+    "role grant without two-step",
+    "public function that should be internal"
+   ],
+   "signals": [
+    "external/public function with no modifier and a state write",
+    "initialize() callable twice or on the implementation",
+    "owner transfer in one step",
+    "tx.origin in require"
+   ],
+   "detect": [
+    "slither . --detect unprotected-upgrade,suicidal,arbitrary-send-eth,tx-origin",
+    "aderyn .  (centralization + access rules)",
+    "grep -rn 'function .*external\\|function .*public' src/ then filter for modifiers",
+    "grep -rn 'initialize\\|_disableInitializers\\|tx.origin' src/"
+   ],
+   "mitigate": [
+    "Ownable2Step + explicit RBAC",
+    "timelock + multisig for sensitive params",
+    "initializer modifier and _disableInitializers() on implementations",
+    "never tx.origin for auth"
+   ],
+   "skills": [
+    "evm-contract-audit",
+    "black-swan-engine"
+   ],
+   "swc": [
+    {
+     "id": "SWC-100",
+     "title": "Function Default Visibility",
+     "cwe": "CWE-710"
+    }
+   ],
+   "incidents_total": 41,
+   "loss_usd_parsed": 14201650,
+   "examples": [
+    {
+     "date": "2026-10-24",
+     "target": "X100Senate",
+     "loss_usd": 4749726.1,
+     "loss_raw": "~4.75M USDT drained from the X100 treasury on Ethereum in a single atomic tx; th",
+     "poc": true
+    },
+    {
+     "date": "2026-06-17",
+     "target": "Aztec V1",
+     "loss_usd": 2200000.0,
+     "loss_raw": "~$2.2M (1158 ETH + 150,000 DAI + 0.4696 renBTC)",
+     "poc": true
+    },
+    {
+     "date": "2026-06-14",
+     "target": "Aztec Connect",
+     "loss_usd": 2190000.0,
+     "loss_raw": "~$2.19M (this PoC reproduces the 908.99 ETH leg)",
+     "poc": true
+    },
+    {
+     "date": "2022-09-28",
+     "target": "MEVBOT",
+     "loss_usd": 1469700.0,
+     "loss_raw": "$1,469,700",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A5",
+   "family": "logic-flaw",
+   "name": "Business logic & accounting",
+   "klass": "Logic",
+   "summary": "Code does what it says, but the accounting model is wrong or incomplete.",
+   "variants": [
+    "wrong update order",
+    "unit/decimals mix",
+    "double counting",
+    "struct/array deletion leaves stale state",
+    "return vs break",
+    "payable.transfer() for distribution"
+   ],
+   "signals": [
+    "no invariant test anywhere in the repo",
+    "internal balances that are never reconciled with token.balanceOf",
+    "silent failure paths (no revert on failure)"
+   ],
+   "detect": [
+    "write invariants first: sum(balances) == balanceOf(this); totalDebt <= totalAssets",
+    "echidna test/invariants.sol --contract Invariants",
+    "medusa fuzz --config medusa.json",
+    "halmos --function check_  (prove the property, not just sample it)"
+   ],
+   "mitigate": [
+    "invariants in CI",
+    "double-entry accounting",
+    "single source of truth per value"
+   ],
+   "skills": [
+    "business-logic-invariant-hunt",
+    "black-swan-engine",
+    "defi-protocol-analysis"
+   ],
+   "swc": [
+    {
+     "id": "SWC-110",
+     "title": "Assert Violation",
+     "cwe": "CWE-670"
+    }
+   ],
+   "incidents_total": 238,
+   "loss_usd_parsed": 421999015,
+   "examples": [
+    {
+     "date": "2023-03-13",
+     "target": "EulerFinance",
+     "loss_usd": 200000000.0,
+     "loss_raw": "~$200M",
+     "poc": true
+    },
+    {
+     "date": "2025-02-23",
+     "target": "HegicOptions",
+     "loss_usd": 104000000.0,
+     "loss_raw": "~104M",
+     "poc": true
+    },
+    {
+     "date": "2024-01-01",
+     "target": "OrbitChain",
+     "loss_usd": 81000000.0,
+     "loss_raw": "~81M",
+     "poc": true
+    },
+    {
+     "date": "2021-05-16",
+     "target": "bEarn",
+     "loss_usd": 11000000.0,
+     "loss_raw": "11M",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A6",
+   "family": "accounting-share-price",
+   "name": "Share / ERC4626 accounting",
+   "klass": "Logic",
+   "summary": "The asset<->share conversion can be shifted, usually by donation or first-deposit inflation.",
+   "variants": [
+    "first-deposit inflation",
+    "donation to totalAssets",
+    "rounding in favour of the user",
+    "preview* inconsistent with the action"
+   ],
+   "signals": [
+    "totalAssets() reads balanceOf",
+    "no virtual shares / decimals offset",
+    "redeem rounding direction favours the caller",
+    "no minimum seed deposit"
+   ],
+   "detect": [
+    "grep -rn 'totalAssets\\|convertToShares\\|previewRedeem\\|_decimalsOffset' src/",
+    "forge test: deposit 1 wei, donate 1e18, deposit again as victim, assert loss",
+    "invariant: share price must not decrease without a loss event"
+   ],
+   "mitigate": [
+    "OZ ERC4626 with _decimalsOffset / virtual shares",
+    "accounting variable for totalAssets, not balanceOf",
+    "rounding always against the user"
+   ],
+   "skills": [
+    "defi-protocol-analysis",
+    "lending-protocol-fork-audit",
+    "token-transfer-audit"
+   ],
+   "swc": [
+    {
+     "id": "SWC-101",
+     "title": "Integer Overflow and Underflow",
+     "cwe": "CWE-682"
+    }
+   ],
+   "incidents_total": 40,
+   "loss_usd_parsed": 29702896,
+   "examples": [
+    {
+     "date": "2021-05-16",
+     "target": "bEarn",
+     "loss_usd": 11000000.0,
+     "loss_raw": "11M",
+     "poc": true
+    },
+    {
+     "date": "2023-04-15",
+     "target": "HundredFinance",
+     "loss_usd": 7000000.0,
+     "loss_raw": "$7M",
+     "poc": true
+    },
+    {
+     "date": "2023-02-24",
+     "target": "EFVault",
+     "loss_usd": 5100000.0,
+     "loss_raw": "~$5.1M",
+     "poc": true
+    },
+    {
+     "date": "2023-11-10",
+     "target": "Raft_fi",
+     "loss_usd": 3200000.0,
+     "loss_raw": "~$3.2 M",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A7",
+   "family": "precision-rounding",
+   "name": "Precision, rounding & arithmetic",
+   "klass": "Arithmetic",
+   "summary": "Integer math loses or misplaces value that an attacker can harvest in a loop.",
+   "variants": [
+    "divide before multiply",
+    "downcast truncation",
+    "round-to-zero dust",
+    "mulDiv without 512-bit intermediate",
+    "unchecked block in accounting"
+   ],
+   "signals": [
+    "'/' appearing before '*' in a value formula",
+    "uint256 -> uint128 casts",
+    "magnitudes with different decimals in one expression"
+   ],
+   "detect": [
+    "slither . --detect divide-before-multiply,incorrect-exp,tautology",
+    "forge test --fuzz-runs 10000 with boundary values (0, 1, max)",
+    "grep -rn 'uint128(\\|uint96(\\|uint64(\\|unchecked {' src/"
+   ],
+   "mitigate": [
+    "mulDiv (Solady/PRBMath)",
+    "explicit decimals normalisation",
+    "no unchecked in accounting paths"
+   ],
+   "skills": [
+    "evm-contract-audit",
+    "token-transfer-audit"
+   ],
+   "swc": [
+    {
+     "id": "SWC-101",
+     "title": "Integer Overflow and Underflow",
+     "cwe": "CWE-682"
+    }
+   ],
+   "incidents_total": 23,
+   "loss_usd_parsed": 86572843,
+   "examples": [
+    {
+     "date": "2023-11-22",
+     "target": "KyberSwap",
+     "loss_usd": 48000000.0,
+     "loss_raw": "~$48M",
+     "poc": true
+    },
+    {
+     "date": "2024-05-14",
+     "target": "Sonne Finance",
+     "loss_usd": 20000000.0,
+     "loss_raw": "$20M",
+     "poc": true
+    },
+    {
+     "date": "2023-04-15",
+     "target": "HundredFinance",
+     "loss_usd": 7000000.0,
+     "loss_raw": "$7M",
+     "poc": true
+    },
+    {
+     "date": "2024-01-02",
+     "target": "RadiantCapital",
+     "loss_usd": 4500000.0,
+     "loss_raw": "~4,5M",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A8",
+   "family": "signature-replay",
+   "name": "Signature, permit & replay",
+   "klass": "Sig",
+   "summary": "A signature is trusted more than it should be: no nonce, no domain binding, or a zero-recover.",
+   "variants": [
+    "ecrecover returns address(0)",
+    "nonce not consumed",
+    "domain separator missing chainId/verifyingContract",
+    "permit without deadline",
+    "malleable s value",
+    "ERC-1271 unchecked",
+    "stale unlimited approval"
+   ],
+   "signals": [
+    "ecrecover used directly without a zero/s-value check",
+    "digest built from abi.encodePacked with >1 dynamic arg",
+    "no nonce mapping read before the action"
+   ],
+   "detect": [
+    "slither . --detect incorrect-erc20-interface,abi-encode-packed",
+    "grep -rn 'ecrecover\\|ECDSA\\|permit\\|nonce\\|DOMAIN_SEPARATOR' src/",
+    "verify digest binds chainId + address(this) + nonce + deadline"
+   ],
+   "mitigate": [
+    "EIP-712 with nonce + deadline, OZ ECDSA.recover",
+    "increaseAllowance over unlimited approve; periodic revoke"
+   ],
+   "skills": [
+    "evm-contract-audit",
+    "wallet-auth-bypass-audit"
+   ],
+   "swc": [
+    {
+     "id": "SWC-117",
+     "title": "Signature Malleability",
+     "cwe": "CWE-347"
+    }
+   ],
+   "incidents_total": 21,
+   "loss_usd_parsed": 16241130,
+   "examples": [
+    {
+     "date": "2026-10-26",
+     "target": "SafeApprovalSquat",
+     "loss_usd": 7450000.0,
+     "loss_raw": "~$7.45M drained from a 2-of-7 Safe on Avalanche C-Chain: 3,078,123.681646 USDC, ",
+     "poc": true
+    },
+    {
+     "date": "2026-05-07",
+     "target": "TrustedVolumes",
+     "loss_usd": 5870000.0,
+     "loss_raw": "~$5.87M",
+     "poc": true
+    },
+    {
+     "date": "2026-04-23",
+     "target": "GiddyVaultV3",
+     "loss_usd": 1300000.0,
+     "loss_raw": "$1.3M",
+     "poc": true
+    },
+    {
+     "date": "2026-10-27",
+     "target": "FenceTranchePool",
+     "loss_usd": 1012999.9999999999,
+     "loss_raw": "~$1.013M (1,013,353.611686 USDC) drained from the pool on Avalanche. This PoC fo",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A9",
+   "family": "initialization-proxy",
+   "name": "Initialization, proxy & upgrade",
+   "klass": "Upgradeable",
+   "summary": "The proxy's storage or implementation pointer can be taken over.",
+   "variants": [
+    "implementation not _disableInitializers()",
+    "storage layout shift",
+    "delegatecall to untrusted target",
+    "reinitializer reused",
+    "selfdestruct in library"
+   ],
+   "signals": [
+    "upgradeTo without timelock",
+    "no storage gap in upgradeable base",
+    "initialize without initializer modifier",
+    "addition of a parent variable"
+   ],
+   "detect": [
+    "slither . --print storage-layout  (diff across versions)",
+    "diffyscan  (source vs verified bytecode drift)",
+    "aderyn .  (proxy/initializer rules)",
+    "grep -rn 'delegatecall\\|upgradeTo\\|_disableInitializers\\|initializer' src/"
+   ],
+   "mitigate": [
+    "storage gaps, onlyProxy/notDelegated guards",
+    "timelocked upgrades with multisig",
+    "reinitializer(version)"
+   ],
+   "skills": [
+    "evm-contract-audit",
+    "erc4337-bundler-audit"
+   ],
+   "swc": [
+    {
+     "id": "SWC-112",
+     "title": "Delegatecall to Untrusted Callee",
+     "cwe": "CWE-829"
+    }
+   ],
+   "incidents_total": 17,
+   "loss_usd_parsed": 21858576,
+   "examples": [
+    {
+     "date": "2026-09-15",
+     "target": "RsETHSafeModule",
+     "loss_usd": 7800000.0,
+     "loss_raw": "2,900 aEthrsETH (~$7.8M gross; 2,882.37 rsETH / ~$7.73M net to the MEV frontrunn",
+     "poc": true
+    },
+    {
+     "date": "2026-05-07",
+     "target": "TrustedVolumes",
+     "loss_usd": 5870000.0,
+     "loss_raw": "~$5.87M",
+     "poc": true
+    },
+    {
+     "date": "2023-02-24",
+     "target": "EFVault",
+     "loss_usd": 5100000.0,
+     "loss_raw": "~$5.1M",
+     "poc": true
+    },
+    {
+     "date": "2024-04-30",
+     "target": "PikeFinance",
+     "loss_usd": 1400000.0,
+     "loss_raw": "1.4M",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A10",
+   "family": "bridge-crosschain",
+   "name": "Bridge & cross-chain verification",
+   "klass": "Logic",
+   "summary": "The destination chain accepts a message it should not have accepted.",
+   "variants": [
+    "proof not bound to chainId/contract",
+    "installable root",
+    "public relayer without role",
+    "replay across chains",
+    "single trusted validator",
+    "transient-state leftover"
+   ],
+   "signals": [
+    "message hash not persisted before use",
+    "no replay guard",
+    "root/validator settable by an unprivileged address",
+    "trust assumption undocumented"
+   ],
+   "detect": [
+    "grep -rn 'verify\\|prove\\|root\\|relay\\|l2LogsRoot\\|finalize' src/",
+    "forge test --fork: replay the same proof twice; replay on a second fork chainId",
+    "map the trust boundary: who can install a root? who can relay?"
+   ],
+   "mitigate": [
+    "domain separation per chain+contract, persisted message ids",
+    "threshold multisig / light client, per-epoch rate limits",
+    "two independent verification paths"
+   ],
+   "skills": [
+    "cross-contract-chain-builder",
+    "l2-rollup-audit",
+    "on-chain-exploit-workflow"
+   ],
+   "swc": [
+    {
+     "id": "SWC-133",
+     "title": "Hash Collisions With Multiple Variable Length Arguments",
+     "cwe": "CWE-294"
+    }
+   ],
+   "incidents_total": 25,
+   "loss_usd_parsed": 27431049,
+   "examples": [
+    {
+     "date": "2026-05-17",
+     "target": "VerusBridge",
+     "loss_usd": 11580000.0,
+     "loss_raw": "~$11.58M",
+     "poc": true
+    },
+    {
+     "date": "2024-11-19",
+     "target": "PolterFinance",
+     "loss_usd": 7000000.0,
+     "loss_raw": "$7M",
+     "poc": true
+    },
+    {
+     "date": "2024-01-30",
+     "target": "MIMSpell",
+     "loss_usd": 6500000.0,
+     "loss_raw": "~6,5M",
+     "poc": true
+    },
+    {
+     "date": "2026-10-28",
+     "target": "ZkLinkNova",
+     "loss_usd": 783000.0,
+     "loss_raw": "~$783K reported across the two exploit txs. This PoC reconstructs the first tx, ",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A11",
+   "family": "token-quirk",
+   "name": "Token integration quirks",
+   "klass": "ExternalCall",
+   "summary": "An integration assumes a standard ERC-20 that the token does not implement.",
+   "variants": [
+    "fee-on-transfer",
+    "rebasing",
+    "returns false",
+    "no return value",
+    "ERC777 hook",
+    "weird ERC4626 limits",
+    "permit2"
+   ],
+   "signals": [
+    "accounting uses the requested amount instead of the measured delta",
+    "transfer() return value unchecked",
+    "token whitelist absent"
+   ],
+   "detect": [
+    "slither . --detect unchecked-transfer,unchecked-lowlevel,low-level-calls",
+    "grep -rn 'transfer(\\|transferFrom(' src/  (must be safeTransfer + measured)",
+    "unit test with a fee-on-transfer mock token"
+   ],
+   "mitigate": [
+    "measure balanceBefore/After on every transfer-in",
+    "whitelist tokens with tested behaviour",
+    "never account from the requested amount"
+   ],
+   "skills": [
+    "token-transfer-audit",
+    "evm-contract-audit"
+   ],
+   "swc": [
+    {
+     "id": "SWC-104",
+     "title": "Unchecked Call Return Value",
+     "cwe": "CWE-252"
+    }
+   ],
+   "incidents_total": 19,
+   "loss_usd_parsed": 1456121,
+   "examples": [
+    {
+     "date": "2026-03-23",
+     "target": "BCE",
+     "loss_usd": 800000.0,
+     "loss_raw": "~800,000 USDT",
+     "poc": true
+    },
+    {
+     "date": "2026-04-28",
+     "target": "RWAVault",
+     "loss_usd": 398655.47,
+     "loss_raw": "398,655.47 USDC",
+     "poc": true
+    },
+    {
+     "date": "2026-10-02",
+     "target": "GoldPesa",
+     "loss_usd": 114999.999186,
+     "loss_raw": "114,999.999186 USDC (exactly reproduced) on Base; the GPX/USDC V4 pool's protoco",
+     "poc": true
+    },
+    {
+     "date": "2026-06-16",
+     "target": "DIP",
+     "loss_usd": 111097.59,
+     "loss_raw": "111,097.59 USDC",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A12",
+   "family": "liquidation-economic",
+   "name": "Liquidation, economics & MEV",
+   "klass": "Logic",
+   "summary": "Economic parameters or execution ordering let value leak without any code bug.",
+   "variants": [
+    "LTV/bonus mis-set",
+    "oracle-lagged liquidation",
+    "uncapped emissions",
+    "sandwich",
+    "bad-debt socialization"
+   ],
+   "signals": [
+    "liquidation threshold above what a -30% move survives",
+    "reward emission without cap",
+    "no minOut on user swaps",
+    "public mempool execution"
+   ],
+   "detect": [
+    "stress simulation: price -50%, liquidity -90%, 100% utilization",
+    "grep -rn 'liquidationThreshold\\|bonus\\|emission\\|rewardRate' src/",
+    "eigenphi / bundle analysis for sandwich exposure"
+   ],
+   "mitigate": [
+    "dynamic thresholds, oracle heartbeats",
+    "emission caps",
+    "private mempool or minOut for users"
+   ],
+   "skills": [
+    "defi-protocol-analysis",
+    "lending-protocol-fork-audit"
+   ],
+   "swc": [
+    {
+     "id": "SWC-114",
+     "title": "Transaction Order Dependence",
+     "cwe": "CWE-362"
+    }
+   ],
+   "incidents_total": 61,
+   "loss_usd_parsed": 39714526,
+   "examples": [
+    {
+     "date": "2024-09-03",
+     "target": "Penpiexyz_io",
+     "loss_usd": 27348259.0,
+     "loss_raw": "11,113.6 ETH (~$27,348,259 USD)",
+     "poc": true
+    },
+    {
+     "date": "2026-10-24",
+     "target": "X100Senate",
+     "loss_usd": 4749726.1,
+     "loss_raw": "~4.75M USDT drained from the X100 treasury on Ethereum in a single atomic tx; th",
+     "poc": true
+    },
+    {
+     "date": "2023-11-07",
+     "target": "MEVbot",
+     "loss_usd": 2000000.0,
+     "loss_raw": "~$2M",
+     "poc": true
+    },
+    {
+     "date": "2023-02-17",
+     "target": "Dexible",
+     "loss_usd": 1500000.0,
+     "loss_raw": "~$1.5M",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A13",
+   "family": "slippage-deadline",
+   "name": "Slippage & deadline",
+   "klass": "Logic",
+   "summary": "User-supplied parameters are trusted defaults, so execution is free to be bad.",
+   "variants": [
+    "minOut = 0",
+    "infinite deadline",
+    "attacker-chosen swap path",
+    "arbitrary calldata accepted"
+   ],
+   "signals": [
+    "minOut/minShares optional or defaulted to 0",
+    "deadline in the far future",
+    "selector/path not validated against a whitelist"
+   ],
+   "detect": [
+    "grep -rn 'minOut\\|minAmountOut\\|minShares\\|deadline\\|swapExact' src/",
+    "unit test: call the entry with minOut=0 and assert it reverts"
+   ],
+   "mitigate": [
+    "mandatory minOut computed on-chain, short deadline, router whitelist"
+   ],
+   "skills": [
+    "defi-protocol-analysis",
+    "evm-contract-audit"
+   ],
+   "swc": [
+    {
+     "id": "SWC-114",
+     "title": "Transaction Order Dependence",
+     "cwe": "CWE-362"
+    }
+   ],
+   "incidents_total": 15,
+   "loss_usd_parsed": 883675,
+   "examples": [
+    {
+     "date": "2025-03-18",
+     "target": "DCFToken",
+     "loss_usd": 442000.0,
+     "loss_raw": "~442k",
+     "poc": true
+    },
+    {
+     "date": "2023-11-06",
+     "target": "TheStandard_io",
+     "loss_usd": 290000.0,
+     "loss_raw": "~$290K",
+     "poc": true
+    },
+    {
+     "date": "2026-10-19",
+     "target": "Argent",
+     "loss_usd": 59800.0,
+     "loss_raw": "~$59.8K reported by SlowMist, ~50,655.92 USDC measured on-chain (48,778.499253 f",
+     "poc": true
+    },
+    {
+     "date": "2023-08-02",
+     "target": "CurveBurner",
+     "loss_usd": 36000.0,
+     "loss_raw": "~$36K",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A14",
+   "family": "governance",
+   "name": "Governance",
+   "klass": "Access",
+   "summary": "The treasury can be moved through a 'valid' decision.",
+   "variants": [
+    "flash-loan voting",
+    "proposal executes treasury transfer",
+    "low quorum",
+    "no/short timelock",
+    "double execution"
+   ],
+   "signals": [
+    "snapshot taken on a borrowable balance",
+    "proposal payload unrestricted",
+    "quorum below realistic turnout",
+    "timelock < 24h"
+   ],
+   "detect": [
+    "grep -rn 'propose\\|quorum\\|timelock\\|execute\\|snapshot' src/",
+    "forge test: simulate a proposal that calls transfer() out of the treasury",
+    "verify executed-proposal ids are persisted"
+   ],
+   "mitigate": [
+    "escrowed/locked voting weight, absolute quorum, >=48h timelock",
+    "treasury spend caps per proposal, dual governance for upgrades"
+   ],
+   "skills": [
+    "evm-contract-audit",
+    "cross-contract-chain-builder"
+   ],
+   "swc": [],
+   "incidents_total": 11,
+   "loss_usd_parsed": 5036626,
+   "examples": [
+    {
+     "date": "2026-10-24",
+     "target": "X100Senate",
+     "loss_usd": 4749726.1,
+     "loss_raw": "~4.75M USDT drained from the X100 treasury on Ethereum in a single atomic tx; th",
+     "poc": true
+    },
+    {
+     "date": "2026-09-12",
+     "target": "YamFinance",
+     "loss_usd": 121000.0,
+     "loss_raw": "~$121K (48.085 WETH + 763.101 UMA)",
+     "poc": true
+    },
+    {
+     "date": "2026-08-05",
+     "target": "StrongBlock",
+     "loss_usd": 72000.0,
+     "loss_raw": "32,695.761681 STRONG + 383,447.167299 STRNGR (~$72K)",
+     "poc": true
+    },
+    {
+     "date": "2026-10-03",
+     "target": "MALT",
+     "loss_usd": 72000.0,
+     "loss_raw": "13,440.581562307921517594 DAI net profit to the attacker (exactly reproduced) on",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A15",
+   "family": "key-compromise",
+   "name": "Key compromise & operational compromise",
+   "klass": "Access",
+   "summary": "No contract bug: a key, signer, or engineer endpoint was compromised and value moved.",
+   "variants": [
+    "hot-wallet private key leak",
+    "multisig signer phishing",
+    "devops laptop compromise",
+    "insider",
+    "EIP-7702 delegation abuse"
+   ],
+   "signals": [
+    "signer set changed",
+    "tx from a receive-only wallet",
+    "mass approvals",
+    "sweep to a fresh address",
+    "new EIP-7702 delegation on a treasury EOA"
+   ],
+   "detect": [
+    "monitor signer sets and delegation designators off-chain",
+    "diff the signer list against the recorded baseline each round",
+    "alert on approvals to unseen spenders from treasury addresses"
+   ],
+   "mitigate": [
+    "HSM/MPC, proposer/approver separation, allowlist policy engine",
+    "hardware keys + FIDO, rotation",
+    "real-time on-chain monitoring + freeze playbook"
+   ],
+   "skills": [
+    "on-chain-forensics",
+    "sovereign-ops-protocol"
+   ],
+   "swc": [],
+   "incidents_total": 4,
+   "loss_usd_parsed": 1500152295,
+   "examples": [
+    {
+     "date": "2025-02-21",
+     "target": "Bybit",
+     "loss_usd": 1500000000.0,
+     "loss_raw": "1.5B",
+     "poc": true
+    },
+    {
+     "date": "2026-10-18",
+     "target": "AlpsCon",
+     "loss_usd": 152295.3625,
+     "loss_raw": "~152.8K USDC drained from the AlpsCon AI Trade Hub reward pools on BNB Chain; th",
+     "poc": true
+    },
+    {
+     "date": "2021-03-05",
+     "target": "Paid Network",
+     "loss_usd": 0.0,
+     "loss_raw": "",
+     "poc": true
+    },
+    {
+     "date": "2022-06-24",
+     "target": "Harmony's Horizon Bridge",
+     "loss_usd": 0.0,
+     "loss_raw": "",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A16",
+   "family": "infra-supplychain",
+   "name": "Supply chain & infrastructure",
+   "klass": "Web2",
+   "summary": "The frontend/dependency layer is compromised, so users sign or send to the attacker.",
+   "variants": [
+    "compromised third-party script",
+    "DNS/CDN takeover",
+    "malicious npm dependency",
+    "browser extension"
+   ],
+   "signals": [
+    "unpinned third-party script in the dapp HTML",
+    "no SRI/CSP",
+    "dependency without lockfile pin"
+   ],
+   "detect": [
+    "curl -s $APP | grep -o 'src=\"[^\"]*\"'  (list external scripts, check integrity)",
+    "check CSP/SRI headers",
+    "audit lockfile diffs for new transitive packages"
+   ],
+   "mitigate": [
+    "SRI + strict CSP, pinned lockfiles, signed releases",
+    "integrity monitoring of build output"
+   ],
+   "skills": [
+    "js-secret-scanner",
+    "frontend-security-audit",
+    "saas-supply-chain-exploitation"
+   ],
+   "swc": [],
+   "incidents_total": 1,
+   "loss_usd_parsed": 447000,
+   "examples": [
+    {
+     "date": "2024-11-14",
+     "target": "vETH",
+     "loss_usd": 447000.0,
+     "loss_raw": "447k",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A17",
+   "family": "transient-storage",
+   "name": "Transient storage",
+   "klass": "Logic",
+   "summary": "EIP-1153 transient state survives longer than the code assumes, or is reused across calls.",
+   "variants": [
+    "uncleared finalize hash",
+    "auth decided from transient value",
+    "assumption that tstore persists"
+   ],
+   "signals": [
+    "tstore in one call path, tload in another, no clear in between",
+    "authorization branch reading transient state"
+   ],
+   "detect": [
+    "grep -rn 'tstore\\|tload\\|transient' src/  (and assembly equivalents)",
+    "forge test: two calls in one tx, second reuses the first's transient value",
+    "slither (recent versions flag transient misuse)"
+   ],
+   "mitigate": [
+    "treat transient values as function-scoped: set, use, clear",
+    "never base authorization on transient state across calls"
+   ],
+   "skills": [
+    "evm-contract-audit",
+    "l2-rollup-audit"
+   ],
+   "swc": [],
+   "incidents_total": 2,
+   "loss_usd_parsed": 785876,
+   "examples": [
+    {
+     "date": "2026-10-28",
+     "target": "ZkLinkNova",
+     "loss_usd": 783000.0,
+     "loss_raw": "~$783K reported across the two exploit txs. This PoC reconstructs the first tx, ",
+     "poc": true
+    },
+    {
+     "date": "2026-09-16",
+     "target": "Startale",
+     "loss_usd": 2876.0,
+     "loss_raw": "427.551160 USDC drained in this batch tx (32.555561 USDC reproduced across 3 of ",
+     "poc": true
+    }
+   ]
+  },
+  {
+   "id": "A18",
+   "family": "freeze-pause-blacklist",
+   "name": "Freeze, pause & blacklist",
+   "klass": "Access",
+   "summary": "Funds cannot move: issuer blacklist, protocol pause, or forced upgrade.",
+   "variants": [
+    "stablecoin blacklist",
+    "pause() blocks withdraw",
+    "admin upgrade changes withdrawal logic",
+    "guardian halt"
+   ],
+   "signals": [
+    "pause modifier on withdraw",
+    "no emergency exit path",
+    "issuer dependency undocumented"
+   ],
+   "detect": [
+    "grep -rn 'whenNotPaused\\|paused()\\|blacklist\\|freeze' src/",
+    "test the admin-evil and admin-gone scenarios end to end",
+    "check whether withdraw/redeem is reachable while paused"
+   ],
+   "mitigate": [
+    "pause must never block user exit (or an explicit emergency path exists)",
+    "document all admin power as centralization risk",
+    "time-delayed upgrades"
+   ],
+   "skills": [
+    "evm-contract-audit",
+    "sovereign-ops-protocol"
+   ],
+   "swc": [
+    {
+     "id": "SWC-105",
+     "title": "Unprotected Ether Withdrawal",
+     "cwe": "CWE-284"
+    }
+   ],
+   "incidents_total": 0,
+   "loss_usd_parsed": 0,
+   "examples": []
+  }
+ ]
+}

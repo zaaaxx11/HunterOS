@@ -43,9 +43,15 @@ syntax; never invent a command result.
 The public compatibility surface includes these command families where enabled:
 `hunt status`, `hunt brief`, `hunt finding`, `hunt lead`, `hunt verify`,
 `hunt poc`, `hunt challenge`, `hunt phase`, `hunt artifact`, `hunt report`,
-`hunt score`, and `hunt target roe`. Availability and permissions are determined
+`hunt score`, `hunt atlas`, and `hunt target roe`. Availability and permissions are determined
 by the installed CLI and the RoE. A blocked command is a stop condition, not an
 invitation to bypass the gate or use raw SQLite.
+
+`hunt atlas` is read-only routing data (18 attack families A1–A18 bound to a
+ledger `klass`, their detection commands, and the skills that finish them). It
+may PRINT a `hunt lead add ...` line for the next bounded hypothesis; it never
+records one, so the CLI stays the only write door and the evidence ladder is
+unchanged.
 
 ## RECORDS AND EVIDENCE
 
