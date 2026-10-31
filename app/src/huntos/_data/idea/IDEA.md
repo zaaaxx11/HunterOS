@@ -47,6 +47,23 @@ Authorize → Observe → Model → Minimal reversible test → Verify → Repor
 A failed or refuted hypothesis is a valid result. Do not retry a blocked or
 stalled path without materially new evidence and authorization.
 
+## BOUNDS AND FOLLOW-UP WORK
+
+**Iteration budget.** A wave may declare how many iterations it may spend
+(`hunt wave open --budget N`). Every finding recorded, lead mutation, oracle
+run, and fuzz probe decrements it through the CLI; the counter is computed,
+never typed. A spent wave refuses new work until it is closed with a recorded
+verdict or its budget is raised explicitly with a stated reason. No budget
+declared means unbounded, which is a decision the ledger records rather than a
+default it invents.
+
+**Follow-ups.** A finding's untested implications are tracked objects, not
+notes in someone's head (`hunt followup add`). Each closes as verified (with
+the evidence that settled it), dropped (with a real reason), or promoted into
+its own linked finding. A finding cannot be promoted or overturned while it
+has open follow-ups, and a claim about a chained finding requires every
+ancestor in its chain to be proven.
+
 ## CDC THINKING
 
 Use divergent, first-principles analysis before converging on a finding. Keep

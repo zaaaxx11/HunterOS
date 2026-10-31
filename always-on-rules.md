@@ -33,6 +33,19 @@ If it is not in the ledger, it is not a record. Never narrate results in chat
 as proven; bind strong claims (PROVEN, EXPLOITABLE, "admin takeover") to their
 ledger record id (e.g. PROVEN[F-3]) or the claim gate will veto the turn.
 
+## BOUNDS AND FOLLOW-UP WORK
+
+A wave may declare an iteration budget (`hunt wave open --budget N`). Every
+finding, lead mutation, oracle run, and fuzz probe decrements it through the
+CLI; the counter is computed, never typed. A spent wave refuses new work until
+it is closed with a recorded verdict or raised explicitly with a stated reason.
+
+A finding's untested implications are tracked objects (`hunt followup add`),
+not notes in someone's head. Each closes as verified (with evidence), dropped
+(with a real reason), or promoted into its own linked finding. A finding cannot
+be promoted or overturned while it has open follow-ups, and a claim about a
+chained finding requires every ancestor in its chain to be proven.
+
 ## STOP AND ESCALATE
 
 Stop immediately when authorization or scope is unclear; a planned action may

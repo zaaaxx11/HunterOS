@@ -9,6 +9,7 @@ Use the `hunt-os` skill router for the workflow.
 1. Register the target: `hunt target add <name> <url>`. Optional flags: `--chain`, `--age-days`, `--tvl`, `--notes`.
 2. Record the RoE: `hunt target roe <target_id> --hosts "<hosts>" --actions <recon,read,auth-test,mutate>`. Actions not listed are default-denied, and `mutate` is denied unless explicitly listed.
 3. Read the opening brief: `hunt brief <target_id>`.
+4. Open the first wave with an iteration budget: `hunt wave open <target_id> "<lanes>" --budget <N>`. See the `budget` command.
 
 Claim constraints: do not describe any result as PROVEN or EXPLOITABLE unless the claim gate can bind it to a `proven-live` finding. Unbound claims are vetoed.
 

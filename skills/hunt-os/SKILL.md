@@ -8,7 +8,7 @@ allowed-tools: Read, Grep, Glob, Bash
 
 RoE-first doctrine (see `${CLAUDE_PLUGIN_ROOT}/always-on-rules.md`, injected at
 SessionStart). This router is the map; the corpus behind it is the HunterOS
-skills tree (5 categories, 50 skills). Never bulk-load: pick the category that
+skills tree (5 categories, 51 skills). Never bulk-load: pick the category that
 matches the target, then load ONE skill at a time, only what the lane needs.
 
 Scope note: this skill covers HunterOS lanes (architect, red-teamer,

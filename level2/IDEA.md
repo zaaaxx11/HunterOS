@@ -191,6 +191,46 @@ ownership. Rounds follow the pattern *spawn → cross-correct → record via
 hunt CLI → re-audit → next round*, and budgets are operator-configured — the
 engine never extends them, and a stall is `BLOCKED`, not a reason to push.
 
+### THE ITERATION BUDGET
+
+A budget is a ledger object, not a sentence in a prompt. `hunt wave open
+--budget N` declares how many iterations a wave may spend; every iteration —
+a finding recorded, a lead mutation, an oracle run, a fuzz probe — decrements
+it through the CLI. The counter is computed, never typed, exactly like
+`findings_new`.
+
+A spent wave refuses new work: `BLOCKED: wave N iteration budget exhausted`.
+The way out is a recorded verdict (`continue` / `exhausted` / `pivot`) or an
+explicit raise — `hunt wave budget --set M --reason "..."`, where the reason
+is required and logged beside the old and new values. Lowering a budget below
+spend is refused, because that would hide work that already happened.
+
+`NULL` (no `--budget`) means unbounded, which is a recorded decision rather
+than a default the engine invents. The existing two-empty-waves economic stop
+is unchanged and still applies on top: a budget bounds effort per wave, the
+economic stop bounds patience across waves.
+
+### FOLLOW-UP WORK
+
+A finding is raw material; the implications it leaves untested are the work
+that gets forgotten. `hunt followup add <finding> <title>` mints them as
+bounded objects — `escalation` (same bug, worse impact), `variant` (same class
+elsewhere), `adjacent-surface` (a surface the finding exposed), or
+`chain-step` (the next link in a chain) — each with a stated hypothesis so it
+can fail.
+
+Each follow-up closes one of three ways: **verified** (tested and held, with
+the evidence that settled it), **dropped** (refuted or deliberately not worth
+chasing, with a real reason — min 20 chars, the same bar as a re-audit
+summary), or **promoted** into its own finding, linked back to its parent.
+
+A finding cannot be promoted or overturned while it has open follow-ups. Its
+implications are part of its evidence, and closing over them silently is how
+a chain gets reported as settled when half of it was never tested. The claim
+gate carries the same rule one level up: `PROVEN[F-n]` on a chained finding
+requires every ancestor `proven-live`, because a chain is only as strong as
+the link below it.
+
 ## BYPASS PRINCIPLES
 
 The doctrine's threat model distills — from documented real incidents across
