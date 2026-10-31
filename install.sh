@@ -300,8 +300,15 @@ if missing:
 ' >/dev/null
     clean_run "$CHECK_PY" -m huntos --help >/dev/null
     clean_run "$CHECK_HUNT" --help >/dev/null
-    # Hermes is deliberately a no-op and does not open or create .huntos state.
-    clean_run "$CHECK_HUNT" install --adapter hermes >/dev/null
+    # Every skills-install adapter is exercised: hermes/codex/opencode install
+    # into their own skills dir, generic needs an explicit --dir. Run from the
+    # foreign cwd so no source checkout can satisfy the checks accidentally.
+    for _adapter in hermes codex opencode; do
+      clean_run "$CHECK_HUNT" install --adapter "$_adapter" \
+        --dir "$TMP/skills-$_adapter" >/dev/null
+    done
+    clean_run "$CHECK_HUNT" install --adapter generic \
+      --dir "$TMP/skills-generic" >/dev/null
   )
 }
 

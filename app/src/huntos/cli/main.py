@@ -106,14 +106,14 @@ Commands:
                                              # (read-only; prints NEXT/WHY, never executes,
                                              # never writes — judgment stays a read: brief/status)
   hunt status                                # full picture + contradiction report
-  hunt install --adapter claude-code|zcode|hermes|generic
+  hunt install --adapter claude-code|zcode|hermes|codex|opencode|generic
               [--scope project|user] [--mode router|native] [--dir PATH]
               [--force] [--check] [--uninstall]
                                              # install the skills layer into a harness
                                              # (delegates to huntos.installer: additive,
                                              # manifest-tracked, same flags + exit codes;
                                              # needs no hunt db and creates none)
-  hunt doctor [--adapter claude-code|zcode|hermes|generic|mock]
+  hunt doctor [--adapter claude-code|zcode|hermes|codex|opencode|generic|mock]
               [--scope project|user] [--dir PATH]
                                              # workspace preflight: cli, db, project lock,
                                              # claim gate, skills layer, hook wrapper —
@@ -170,6 +170,7 @@ from pathlib import Path
 from ..core import atlas, db, fuzz
 from ..core.models import PHASE_ARTIFACTS, ROE_ACTIONS, SEVERITY
 from ..conductor.adapter import MockAdapter
+from ..installer import HARNESS_ADAPTERS
 from .errors import (
     MSYS_BLOCKED_MSG as _MSYS_BLOCKED_MSG,
     MSYS_MANGLED_RE as _MSYS_MANGLED_RE,
@@ -1193,7 +1194,8 @@ CONDUCTOR_ADAPTERS = {"mock": MockAdapter}
 # Harness integrations are deliberately explicit.  We inspect only configured
 # skill destinations and the explicit adapter registry; we never scan running
 # processes, credentials, PATH entries, or a target tree.
-HARNESS_SKILL_ADAPTERS = ("claude-code", "zcode", "hermes")
+# Single source of truth: the installer's HARNESS_ADAPTERS table.
+HARNESS_SKILL_ADAPTERS = tuple(HARNESS_ADAPTERS)
 
 
 def _adapter_registry_module():
@@ -1281,7 +1283,7 @@ def cmd_harness(args, conn=None) -> int:
     if args.action == "list":
         print("mock (built-in; deterministic; simulated)")
         for name in HARNESS_SKILL_ADAPTERS:
-            detail = "idea-injection; no process discovery" if name == "hermes" else "skills integration"
+            detail = "skills integration" if name != "generic" else "skills integration (--dir required)"
             print(f"{name} (built-in; {detail})")
         for entry in registry.list_adapters():
             print(f"{_capget(entry, 'name', '?')} (registered adapter)")
@@ -1473,10 +1475,14 @@ def _cmd_adapter_doctor(adapter) -> int:
 # Adapter names doctor understands. Deliberately NOT argparse choices: an
 # unknown adapter stays a clean BLOCKED ValueError (exit 2), matching the
 # conductor adapter registry behavior.
-DOCTOR_ADAPTERS = ("claude-code", "zcode", "hermes", "generic", "mock")
+# Single source of truth: huntos.installer.HARNESS_ADAPTERS (name -> base dir,
+# needs_dir). `mock` is the conductor's built-in deterministic adapter and is
+# NOT a skills-install target, so it is doctor-only.
+DOCTOR_ADAPTERS = ("claude-code", "zcode", "hermes", "codex", "opencode",
+                   "generic", "mock")
 # Adapters whose installed destination doctor inspects (--dir required for
-# generic, exactly like install). hermes is the explicit no-op adapter.
-SKILLS_ADAPTERS = ("claude-code", "zcode", "generic")
+# generic, exactly like install). Every real skills target is inspectable.
+SKILLS_ADAPTERS = tuple(HARNESS_ADAPTERS)
 
 # The installed layer's fixed layout (huntos.installer constants, mirrored):
 # everything lives under the `hunt-os` router dir inside the skills dir.
@@ -1487,17 +1493,13 @@ MANIFEST_NAME = ".hunt-os-manifest.json"
 def resolve_installed_dest(adapter: str, scope: str, dir_override) -> Path:
     """Resolve the adapter's skills dir EXACTLY as `hunt install` does.
 
-    Mirror of huntos.installer.resolve_skills_dir (same base dirs, same
-    precedence: --dir wins, then <cwd|~>/<adapter base>); the parity test
-    pins it against the installer's own function so they cannot drift."""
-    if dir_override:
-        return Path(dir_override)
-    base = {"claude-code": ".claude/skills", "zcode": ".zcode/skills"}.get(adapter)
-    if base is None:  # generic without --dir (parser rejects it upstream too)
-        raise ValueError(f"BLOCKED: adapter {adapter!r} requires --dir")
-    if scope == "user":
-        return Path.home() / base
-    return Path.cwd() / base
+    Delegates to huntos.installer.resolve_skills_dir — the same single source
+    of truth (HARNESS_ADAPTERS), same precedence (--dir wins, then
+    <cwd|~>/<adapter base>); the parity test pins it against the installer's
+    own function so they cannot drift.
+    """
+    from huntos import installer
+    return installer.resolve_skills_dir(adapter, scope, dir_override)
 
 
 def _source_gate_path() -> Path:
@@ -1622,11 +1624,11 @@ def cmd_doctor(args, conn) -> int:
                    f"no {MANIFEST_NAME} in {dest} — run: hunt install "
                    f"--adapter {adapter} first")
     elif adapter == "hermes":
-        # Hermes is the explicit no-op adapter: the layer is idea-injected
-        # from the package, so there is nothing on disk to check — remind, never FAIL.
-        print("skills-layer: ok (hermes is a no-op adapter — inject huntos/_data/idea/skills "
-              "directly into every hunt session, reading huntos/_data/idea/IDEA.md and "
-              "huntos/_data/idea/HUNT-BRIDGE.md as the idea layer; nothing is copied to disk)")
+        # Hermes installs into its own skills dir like every other adapter;
+        # a missing manifest is the same FAIL as for claude-code/zcode.
+        report("skills-layer", False,
+               f"no {MANIFEST_NAME} in {dest} — run: hunt install "
+               f"--adapter {adapter} first")
 
     # -- 6. Hook wrapper: the resolved installed wrapper exists and is runnable.
     if not wrapper.is_file():
@@ -2333,9 +2335,10 @@ def main(argv=None) -> int:
     )
     pi.add_argument(
         "--adapter", required=True,
-        choices=("claude-code", "zcode", "hermes", "generic"),
-        help="target harness adapter (hermes = no-op idea-injection pointer; "
-             "generic requires --dir)",
+        choices=tuple(HARNESS_ADAPTERS),
+        help="target harness adapter (claude-code, zcode, hermes, codex, "
+             "opencode install into that harness's own skills dir; generic "
+             "requires --dir)",
     )
     pi.add_argument(
         "--scope", choices=("project", "user"), default="project",

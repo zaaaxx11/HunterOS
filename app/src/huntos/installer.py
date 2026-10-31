@@ -67,10 +67,33 @@ REQUIRED_ROLES = (
 # Subdirectories of a skill that travel with it in native mode.
 SKILL_SUBDIRS = ("assets", "examples", "references", "scripts")
 
-ADAPTER_BASE = {
-    "claude-code": ".claude/skills",
-    "zcode": ".zcode/skills",
+# The harness skill-destination map: the SINGLE SOURCE OF TRUTH for which
+# agent harnesses HUNT-OS can install its skills layer into, and where.
+# `hunt install --adapter <name>` and `hunt doctor --adapter <name>` both
+# resolve through this table (cli/main.py imports it), so a new harness is
+# registered in exactly one place. `hermes` is a real install target: the
+# Hermes skills loader reads ~/.hermes/skills/<name>/SKILL.md.
+#
+#   <name> -> (relative base dir under <cwd|~>, needs_dir)
+#
+# needs_dir=True means the adapter has no conventional location and the
+# operator must pass --dir explicitly (generic).
+HARNESS_ADAPTERS: "dict[str, tuple[str, bool]]" = {
+    "claude-code": (".claude/skills", False),
+    "zcode": (".zcode/skills", False),
+    "hermes": (".hermes/skills", False),
+    "codex": (".codex/skills", False),
+    "opencode": (".opencode/skills", False),
+    "generic": ("", True),
 }
+
+# Adapters whose SKILL.md frontmatter must satisfy the Hermes skill loader
+# (name + description + version/author/license/platforms/metadata). Claude
+# Code and ZCode accept the plain name/description form, so the extra fields
+# are only emitted for these targets.
+FRONTMATTER_STRICT_ADAPTERS = frozenset({"hermes", "codex", "opencode", "generic"})
+
+ADAPTER_BASE = {name: base for name, (base, _needs) in HARNESS_ADAPTERS.items()}
 
 ROUTER_NAME = "hunt-os"
 
@@ -83,17 +106,6 @@ def router_description() -> str:
         f"hunting skills corpus ({len(collect_skill_dirs())} skills across the "
         "catalog) one skill at a time, on demand."
     )
-
-HERMES_INSTRUCTION = """\
-Hermes adapter: nothing to copy. Hermes loads the idea layer directly from
-the package -- inject these files into every hunt session:
-
-    huntos/_data/idea/skills/INDEX.md              (the router -- read FIRST)
-    huntos/_data/idea/skills/<category>/<name>/SKILL.md   (on demand, one at a time)
-    huntos/_data/idea/IDEA.md                      (the doctrine)
-    huntos/_data/idea/HUNT-BRIDGE.md               (the hunt-ledger contract)
-
-No files were written and none need to be."""
 
 
 # --------------------------------------------------------------------------
@@ -221,7 +233,31 @@ def _source_files() -> "list[tuple[str, Path]]":
 # the router SKILL.md
 # --------------------------------------------------------------------------
 
-def _router_skill_md(mode: str) -> str:
+def _frontmatter_fields(adapter: str) -> "list[str]":
+    """Extra SKILL.md frontmatter lines for strict skill loaders.
+
+    Claude Code and ZCode discover a skill from `name` + `description` alone.
+    Hermes (and the other strict loaders) additionally validate `version`,
+    `author`, `license`, `platforms` and `metadata` — a router skill carrying
+    only the two basic fields is rejected there. The extra fields are emitted
+    ONLY for those targets, so the Claude Code / ZCode payload stays
+    byte-identical to what it has always been.
+    """
+    if adapter not in FRONTMATTER_STRICT_ADAPTERS:
+        return []
+    return [
+        f"version: {SKILLS_VERSION}",
+        "author: Mafaza Bagas, Hermes Agent",
+        "license: MIT",
+        "platforms: [linux, macos, windows]",
+        "metadata:",
+        "  hermes:",
+        "    tags: [security, bug-bounty, audit, hunt, red-team, web2, web3]",
+        "    category: security",
+    ]
+
+
+def _router_skill_md(mode: str, adapter: str = "claude-code") -> str:
     bridge_rel, bridge_bytes = collect_bridge()
     bridge_text = bridge_bytes.decode("utf-8")
     one_rule = _extract_section(bridge_text, "THE ONE RULE")
@@ -231,6 +267,7 @@ def _router_skill_md(mode: str) -> str:
         "---",
         f"name: {ROUTER_NAME}",
         f"description: {router_description()}",
+        *_frontmatter_fields(adapter),
         "---",
         "",
         "# HUNT-OS - hunting skills router",
@@ -301,11 +338,14 @@ def _router_skill_md(mode: str) -> str:
 # install plan: every file we intend to write, as (posix rel, bytes)
 # --------------------------------------------------------------------------
 
-def build_plan(mode: str) -> "list[tuple[str, bytes, str, str]]":
+def build_plan(mode: str, adapter: str = "claude-code") -> "list[tuple[str, bytes, str, str]]":
     """Return (dest_rel, content, source_rel, source_sha) tuples.
 
     source_rel is the repo-relative path of the copied source (empty for
     generated files, which are excluded from the source fingerprint).
+
+    `adapter` selects the SKILL.md frontmatter dialect; every copied file is
+    identical across adapters, so the manifest hashes stay stable.
     """
     plan: "list[tuple[str, bytes, str, str]]" = []
     fingerprint_entries: "list[tuple[str, str]]" = []
@@ -338,7 +378,7 @@ def build_plan(mode: str) -> "list[tuple[str, bytes, str, str]]":
 
     # generated router SKILL.md (not a copied source -> not fingerprinted)
     plan.append((f"{ROUTER_DIR}/SKILL.md",
-                 _router_skill_md(mode).encode("utf-8"), "", ""))
+                 _router_skill_md(mode, adapter).encode("utf-8"), "", ""))
 
     # native mode: one namespaced skill dir per landed skill
     if mode == "native":
@@ -494,7 +534,7 @@ def cmd_install(args: argparse.Namespace) -> int:
     if not PY_HOOK_WRAPPER_SRC.is_file():
         _fail(f"Python hook wrapper not found at {PY_HOOK_WRAPPER_SRC}")
 
-    plan = build_plan(args.mode)
+    plan = build_plan(args.mode, args.adapter)
 
     # ADDITIVE LAW: refuse to touch anything that is not ours.
     old_manifest = _load_manifest(skills_dir)
@@ -643,14 +683,18 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
 
 
 def cmd_hermes(args: argparse.Namespace) -> int:
+    """Hermes is a REAL install target, not a no-op.
+
+    The Hermes skills loader reads `<skills-dir>/<name>/SKILL.md`, so the
+    router layer is installed exactly like claude-code/zcode — with the
+    strict frontmatter dialect Hermes validates. `--check` and `--uninstall`
+    follow the same manifest contract as every other adapter.
+    """
     if args.check:
-        print("hermes adapter: nothing installed on disk, nothing to check.")
-        return 0
+        return cmd_check(args)
     if args.uninstall:
-        print("hermes adapter: nothing installed on disk, nothing to uninstall.")
-        return 0
-    print(HERMES_INSTRUCTION)
-    return 0
+        return cmd_uninstall(args)
+    return cmd_install(args)
 
 
 # --------------------------------------------------------------------------
@@ -669,9 +713,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--adapter", required=True,
-        choices=("claude-code", "zcode", "hermes", "generic"),
-        help="target harness adapter (hermes = no-op soul-injection pointer; "
-             "generic requires --dir)",
+        choices=tuple(HARNESS_ADAPTERS),
+        help="target harness adapter (hermes/codex/opencode install the skills "
+             "layer into that harness's own skills dir; generic requires --dir)",
     )
     parser.add_argument(
         "--scope", choices=("project", "user"), default="project",
@@ -710,12 +754,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: "list[str] | None" = None) -> int:
     args = build_parser().parse_args(argv)
 
-    if args.adapter == "hermes":
-        return cmd_hermes(args)
-
     if args.adapter == "generic" and not args.dir:
         _fail("--adapter generic requires --dir")
-
     if args.check:
         return cmd_check(args)
     if args.uninstall:

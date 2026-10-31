@@ -94,12 +94,15 @@ is the contract). IDEA.md's own references (e.g.
 `skills/<category>/<name>/SKILL.md`.
 
 A harness without idea-injection gets the same layer via the separate
-stdlib skills installer: `hunt install --adapter claude-code|zcode|hermes|generic`
+stdlib skills installer: `hunt install --adapter claude-code|zcode|hermes|codex|opencode|generic`
 (or equivalently `python -m huntos.installer ...`) copies the skills into the
 harness's native skill directory (router skill `hunt-os`, or one native skill
 per SKILL.md with `--mode native`). This command assumes the CLI bootstrap has
-already installed `hunt`; it does not install Python or the CLI. Hermes itself
-needs no filesystem install: it loads `huntos/_data/idea/` directly.
+already installed `hunt`; it does not install Python or the CLI. Every adapter
+installs into its own skills dir (`.claude/skills`, `.zcode/skills`,
+`.hermes/skills`, `.codex/skills`, `.opencode/skills`); the strict loaders
+additionally receive the full SKILL.md frontmatter they validate. `hunt harness
+list` enumerates the supported targets.
 
 ## Promotion path
 

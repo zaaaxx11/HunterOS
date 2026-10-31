@@ -42,11 +42,68 @@ def test_harness_list_and_mock_doctor(capsys, monkeypatch):
 
     assert main(["harness", "list"]) == 0
     listed = capsys.readouterr().out
-    assert {"mock", "claude-code", "zcode", "hermes"} <= set(listed.split())
+    assert {"mock", "claude-code", "zcode", "hermes", "codex",
+            "opencode"} <= set(listed.split())
     assert main(["harness", "doctor", "mock"]) == 0
     diagnosed = capsys.readouterr().out
     assert "adapter: mock-harness" in diagnosed
     assert "duplex smoke: ok" in diagnosed
+
+
+def test_harness_adapters_single_source():
+    """One table drives install, doctor, and harness list (no drift)."""
+    from huntos.installer import HARNESS_ADAPTERS
+    from huntos.cli.main import DOCTOR_ADAPTERS, SKILLS_ADAPTERS
+
+    assert set(HARNESS_ADAPTERS) == {"claude-code", "zcode", "hermes",
+                                     "codex", "opencode", "generic"}
+    # every skills target is doctor-visible; mock is conductor-only
+    assert set(SKILLS_ADAPTERS) == set(HARNESS_ADAPTERS)
+    assert set(DOCTOR_ADAPTERS) == set(HARNESS_ADAPTERS) | {"mock"}
+    # generic has no conventional location
+    assert HARNESS_ADAPTERS["generic"][1] is True
+    assert all(needs is False for name, (_b, needs)
+               in HARNESS_ADAPTERS.items() if name != "generic")
+
+
+def test_hermes_install_is_real(tmp_path, capsys):
+    """Hermes is a real install target with strict frontmatter, not a no-op."""
+    import importlib
+    installer = importlib.import_module("huntos.installer")
+    dest = tmp_path / "skills"
+    rc = installer.main(["--adapter", "hermes", "--dir", str(dest)])
+    assert rc == 0
+    skill = dest / "hunt-os" / "SKILL.md"
+    assert skill.is_file()
+    text = skill.read_text(encoding="utf-8")
+    # strict-loader fields the plain claude-code dialect does not carry
+    assert "version:" in text
+    assert "platforms:" in text
+    assert "metadata:" in text
+    # the corpus, roles and hook pack travel with it
+    assert (dest / "hunt-os" / "skills" / "INDEX.md").is_file()
+    assert (dest / "hunt-os" / "roles" / "lane-runner.md").is_file()
+    assert (dest / "hunt-os" / "hooks" / "claim_gate.py").is_file()
+    # --check verifies the manifest, --uninstall removes exactly it
+    assert installer.main(["--adapter", "hermes", "--dir", str(dest),
+                           "--check"]) == 0
+    assert installer.main(["--adapter", "hermes", "--dir", str(dest),
+                           "--uninstall"]) == 0
+    assert not skill.exists()
+
+
+def test_claude_code_frontmatter_unchanged(tmp_path):
+    """The strict fields are emitted ONLY for strict loaders."""
+    import importlib
+    installer = importlib.import_module("huntos.installer")
+    dest = tmp_path / "skills"
+    assert installer.main(["--adapter", "claude-code", "--dir", str(dest)]) == 0
+    text = (dest / "hunt-os" / "SKILL.md").read_text(encoding="utf-8")
+    head = text.split("---")[1]
+    assert "name: hunt-os" in head
+    assert "description:" in head
+    assert "platforms:" not in head
+    assert "metadata:" not in head
 
 
 def test_non_tty_bare_entrypoint_does_not_prompt(capsys, monkeypatch):

@@ -261,14 +261,20 @@ nested for on-demand reads), plus the seven lane roles at `hunt-os/roles/`, the 
 ```bash
 hunt install --adapter claude-code                  # .claude/skills (project scope, router mode)
 hunt install --adapter zcode                        # .zcode/skills
+hunt install --adapter hermes                       # .hermes/skills
+hunt install --adapter codex                        # .codex/skills
+hunt install --adapter opencode                     # .opencode/skills
 hunt install --adapter generic --dir /path/to/skills # any harness: you name the directory
 hunt install --adapter claude-code --check          # verify no drift vs the manifest
 hunt install --adapter claude-code --uninstall      # remove exactly the manifest files
 ```
 
 `hunt install --help` is the operator-facing reference (it needs no hunt db
-and never creates one). Hermes needs none of this — it loads
-`app/src/huntos/_data/idea/` and `_data/roles/` directly.
+and never creates one). `hunt harness list` shows every supported target and
+`hunt harness doctor <name>` preflights one. Hermes/codex/opencode install
+into their own skills dir exactly like claude-code; the router SKILL.md also
+carries the strict frontmatter those loaders validate (`version`,
+`platforms`, `metadata`), which claude-code/zcode do not need.
 The installer is additive by law: it refuses to overwrite files it did not
 install unless you pass `--force`. **P5 honesty:** the install is permanent
 and namespaced — it stays until `--uninstall`. It is not session-scoped:

@@ -1,10 +1,10 @@
 # HUNT-BRIDGE — the engine's contract with the hunt state machine
 
-Injected into the host harness every hunt session — Hermes via idea-injection
-of `huntos/_data/idea/`, every other harness (Claude Code / ZCode / generic)
-via the installed `hunt-os` skill (`python -m huntos.installer`, run as
-`hunt install`). Pair with the claim gate hook
-(`app/src/huntos/_data/bin/claim_gate.py`, installed as
+Injected into the host harness every hunt session — Hermes via the installed
+`hunt-os` skill (`hunt install --adapter hermes`, or idea-injection of
+`huntos/_data/idea/`), every other harness (Claude Code / ZCode / Codex /
+OpenCode / generic) the same way through its own skills dir. Pair with the
+claim gate hook (`app/src/huntos/_data/bin/claim_gate.py`, installed as
 `hunt-os/hooks/claim_gate.py`) — it scans your output after this file loads.
 
 ## THE ONE RULE
