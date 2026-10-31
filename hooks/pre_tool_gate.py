@@ -25,7 +25,10 @@ LOCK_FILENAME = ".huntos-project"
 DEFAULT_DB = "~/.huntos/hunt.db"
 
 # Read-only MCP tool names (suffix after the server prefix). These never gate.
-# Must match the tool names registered by mcp/server.py.
+# Must match the tool names registered by mcp/server.py. Every tool NOT listed
+# here is treated as a WRITE and requires a bound workspace — fail closed, so a
+# newly registered ladder tool is gated the moment it appears (the sync test in
+# tests/smoke/test_plugin_runtime.py pins this set against the server's TOOLS).
 READ_ONLY = frozenset({
     "hunt_status",
     "hunt_brief",

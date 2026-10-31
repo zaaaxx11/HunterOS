@@ -238,9 +238,68 @@ def _argv_lead_add(a: dict) -> list[str]:
 
 def _argv_report(a: dict) -> list[str]:
     out = ["report", str(a["target_id"])]
-    if a.get("out"):
-        out.append(f"--out={a['out']}")
+    _opt(out, a, "out", "--out")
     return out
+
+
+def _argv_poc_run(a: dict) -> list[str]:
+    out = ["poc", "run", f"--id={a['finding_id']}", f"--poc-path={a['poc_path']}"]
+    _opt(out, a, "timeout", "--timeout")
+    return out
+
+
+def _argv_finding_promote(a: dict) -> list[str]:
+    return [
+        "finding", "promote",
+        f"--id={a['finding_id']}",
+        f"--evidence-ref={a['evidence_ref']}",
+        f"--poc-path={a['poc_path']}",
+    ]
+
+
+def _argv_verify(a: dict) -> list[str]:
+    out = [
+        "verify", str(a["finding_id"]), a["artifact_type"],
+        _positional("body", a["body"]),
+    ]
+    _opt(out, a, "role", "--role")
+    return out
+
+
+def _argv_challenge(a: dict) -> list[str]:
+    out = [
+        "challenge", str(a["finding_id"]),
+        _positional("notes", a["notes"]),
+    ]
+    _opt(out, a, "role", "--role")
+    return out
+
+
+def _argv_finding_overturn(a: dict) -> list[str]:
+    return ["finding", "overturn", f"--id={a['finding_id']}", f"--by={a['by']}"]
+
+
+def _argv_lead_mutate(a: dict) -> list[str]:
+    out = [
+        "lead", "mutate",
+        f"--lead={a['lead']}",
+        f"--variable={a['variable']}",
+        f"--old={a['old']}",
+        f"--new={a['new']}",
+        f"--result={a['result']}",
+        f"--evidence={a['evidence']}",
+    ]
+    _opt(out, a, "plan", "--plan")
+    _opt(out, a, "resolve", "--resolve")
+    return out
+
+
+def _argv_wave_reaudit(a: dict) -> list[str]:
+    return [
+        "wave", "reaudit",
+        f"--wave-id={a['wave_id']}",
+        f"--summary={a['summary']}",
+    ]
 
 
 # Schema helpers
@@ -270,6 +329,8 @@ _WRITE = {"readOnlyHint": False, "destructiveHint": False}
 
 _SEVERITY = ["critical", "high", "medium", "low", "info"]
 _ACTION = ["recon", "read", "auth-test", "mutate"]
+_ARTIFACT_TYPE = ["fork_receipt", "tx_hash", "http_transcript"]
+_MUTATION_RESULT = ["advanced", "unchanged", "refuted", "unknown"]
 
 TOOLS: dict[str, dict] = {
     # --- read tools ---
@@ -389,6 +450,130 @@ TOOLS: dict[str, dict] = {
             ["target_id"],
         ),
         "argv": _argv_report,
+    },
+    # --- evidence-ladder tools ---
+    # These are the verbs that let an MCP-only agent climb the ladder. Without
+    # them an agent can record a theoretical finding and nothing else: the
+    # ladder would be unreachable outside the slash commands and the shell.
+    "hunt_poc_run": {
+        "description": (
+            "Run a finding's proof-of-concept and record the run (exit code and "
+            "sha256) in the ledger. Required before promoting to in-code."
+        ),
+        "annotations": _WRITE,
+        "inputSchema": _obj(
+            {
+                "finding_id": _i("Finding id."),
+                "poc_path": _s("Path to the PoC file.", minLength=1),
+                "timeout": {"type": "integer", "minimum": 1,
+                            "description": "Timeout in seconds (optional)."},
+            },
+            ["finding_id", "poc_path"],
+        ),
+        "argv": _argv_poc_run,
+    },
+    "hunt_finding_promote": {
+        "description": (
+            "Promote a finding up the evidence ladder. The CLI enforces every "
+            "gate: a PoC that ran, a fresh evidence ref, a verifier event and an "
+            "adversary challenge for proven-live."
+        ),
+        "annotations": _WRITE,
+        "inputSchema": _obj(
+            {
+                "finding_id": _i("Finding id."),
+                "evidence_ref": _s("Evidence reference.", minLength=1),
+                "poc_path": _s("Path to the PoC file.", minLength=1),
+            },
+            ["finding_id", "evidence_ref", "poc_path"],
+        ),
+        "argv": _argv_finding_promote,
+    },
+    "hunt_verify": {
+        "description": (
+            "Record a verifier event on a finding (fork_receipt, tx_hash or "
+            "http_transcript). Required for proven-live."
+        ),
+        "annotations": _WRITE,
+        "inputSchema": _obj(
+            {
+                "finding_id": _i("Finding id."),
+                "artifact_type": _s(
+                    "Verifier artifact type.", enum=_ARTIFACT_TYPE),
+                "body": _s("Verifier evidence body.", minLength=1),
+                "role": _s("Verifier role name (optional)."),
+            },
+            ["finding_id", "artifact_type", "body"],
+        ),
+        "argv": _argv_verify,
+    },
+    "hunt_challenge": {
+        "description": (
+            "Record an adversary challenge on a finding. Required for proven-live; "
+            "a finding with no adversary event cannot climb."
+        ),
+        "annotations": _WRITE,
+        "inputSchema": _obj(
+            {
+                "finding_id": _i("Finding id."),
+                "notes": _s("Challenge notes.", minLength=1),
+                "role": _s("Adversary role name (optional)."),
+            },
+            ["finding_id", "notes"],
+        ),
+        "argv": _argv_challenge,
+    },
+    "hunt_finding_overturn": {
+        "description": (
+            "Overturn a finding. Terminal: the claims bound to it stop passing "
+            "the claim gate."
+        ),
+        "annotations": _WRITE,
+        "inputSchema": _obj(
+            {
+                "finding_id": _i("Finding id."),
+                "by": _s("Who overturned it.", minLength=1),
+            },
+            ["finding_id", "by"],
+        ),
+        "argv": _argv_finding_overturn,
+    },
+    "hunt_lead_mutate": {
+        "description": (
+            "Mutate one variable of a lead and record the result. An 'unknown' "
+            "result requires a plan for the next probe, so the loop never "
+            "dead-ends."
+        ),
+        "annotations": _WRITE,
+        "inputSchema": _obj(
+            {
+                "lead": _i("Lead id."),
+                "variable": _s("Variable name.", minLength=1),
+                "old": _s("Old value."),
+                "new": _s("New value.", minLength=1),
+                "result": _s("Mutation result.", enum=_MUTATION_RESULT),
+                "evidence": _s("Evidence for the result.", minLength=1),
+                "plan": _s("Next probe plan 'variable|value|description'."),
+                "resolve": _i("Precondition id to resolve (optional)."),
+            },
+            ["lead", "variable", "old", "new", "result", "evidence"],
+        ),
+        "argv": _argv_lead_mutate,
+    },
+    "hunt_wave_reaudit": {
+        "description": (
+            "Record a wave re-audit (confirmed/overturned counts and a summary). "
+            "Wave N+1 stays locked until this exists."
+        ),
+        "annotations": _WRITE,
+        "inputSchema": _obj(
+            {
+                "wave_id": _i("Wave id."),
+                "summary": _s("Re-audit summary (min 20 chars).", minLength=20),
+            },
+            ["wave_id", "summary"],
+        ),
+        "argv": _argv_wave_reaudit,
     },
 }
 

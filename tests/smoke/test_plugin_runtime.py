@@ -110,6 +110,76 @@ def test_build_argv_uses_json_flag_before_verb(server):
     assert argv == ["--json", "status"]
 
 
+def test_ladder_verbs_are_exposed(server):
+    """An MCP-only agent must be able to climb the evidence ladder.
+
+    Before the ladder tools existed, an agent with MCP access alone could
+    record a theoretical finding and nothing more — promote/verify/challenge/
+    poc-run lived only in the slash commands and the shell.
+    """
+    names = set(server.TOOLS)
+    for tool in ("hunt_poc_run", "hunt_finding_promote", "hunt_verify",
+                 "hunt_challenge", "hunt_finding_overturn", "hunt_lead_mutate",
+                 "hunt_wave_reaudit"):
+        assert tool in names, f"missing ladder tool {tool}"
+
+
+def test_ladder_argv_shapes(server):
+    assert server.build_argv("hunt_poc_run", {
+        "finding_id": 3, "poc_path": "/tmp/poc.py"}) == [
+        "--json", "poc", "run", "--id=3", "--poc-path=/tmp/poc.py"]
+    assert server.build_argv("hunt_finding_promote", {
+        "finding_id": 3, "evidence_ref": "ref-1", "poc_path": "/tmp/p.py"}) == [
+        "--json", "finding", "promote", "--id=3", "--evidence-ref=ref-1",
+        "--poc-path=/tmp/p.py"]
+    assert server.build_argv("hunt_verify", {
+        "finding_id": 3, "artifact_type": "tx_hash", "body": "0xabc"}) == [
+        "--json", "verify", "3", "tx_hash", "0xabc"]
+    assert server.build_argv("hunt_wave_reaudit", {
+        "wave_id": 2, "summary": "x" * 20}) == [
+        "--json", "wave", "reaudit", "--wave-id=2", "--summary=" + "x" * 20]
+
+
+def test_ladder_positional_rejects_flag_shaped_values(server):
+    """A body/notes value starting with '-' must not become an argparse flag."""
+    with pytest.raises(Exception):
+        server.build_argv("hunt_verify", {
+            "finding_id": 3, "artifact_type": "tx_hash", "body": "--evil"})
+
+
+def test_pre_gate_read_only_set_matches_server(server, pre_gate):
+    """The gate's read-only set must be exactly the server's read tools.
+
+    Fail-closed means a NEW tool is gated automatically, but a read tool that
+    is missing from the set would be wrongly gated — so the set is pinned.
+    """
+    read_tools = {
+        name for name, tool in server.TOOLS.items()
+        if tool["annotations"].get("readOnlyHint")
+    }
+    assert read_tools == set(pre_gate.READ_ONLY)
+
+
+def test_pre_gate_gates_ladder_writes(pre_gate, tmp_path):
+    """Every ladder tool needs a bound workspace (db + project lock)."""
+    import os
+    payload = {"tool_name": "mcp__hunter-os__hunt_finding_promote",
+               "cwd": str(tmp_path)}
+    code, msg = pre_gate.decide(payload, {"HUNT_DB": str(tmp_path / "nope.db")})
+    assert code == 2
+    assert "BLOCKED" in msg
+
+
+def test_pre_gate_allows_ladder_write_when_bound(pre_gate, tmp_path):
+    db = tmp_path / "hunt.db"
+    db.write_bytes(b"")
+    (tmp_path / ".huntos-project").write_text("{}", encoding="utf-8")
+    payload = {"tool_name": "mcp__hunter-os__hunt_finding_promote",
+               "cwd": str(tmp_path)}
+    code, msg = pre_gate.decide(payload, {"HUNT_DB": str(db)})
+    assert code == 0
+
+
 def test_build_argv_is_a_list_never_a_shell_string(server):
     argv = server.build_argv("hunt_target_add",
                              {"name": "Acme", "url": "https://acme.test"})
