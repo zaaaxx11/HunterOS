@@ -312,7 +312,18 @@ hunt install --adapter generic --dir /path/to/harness/skills
 
 ### Managed Mode (Custom Adapter Required)
 
-Requires your own adapter executable implementing the `HUNT-ADAPTER/1` protocol ([spec](docs/HUNT-ADAPTER-1.md)). The bundled reference implementation (`examples/adapters/reference_jsonl.py`) demonstrates the protocol with deterministic simulation, not real agents.
+Requires your own adapter executable implementing the `HUNT-ADAPTER/1` protocol ([spec](docs/HUNT-ADAPTER-1.md)). Three ship in `examples/adapters/`:
+
+- `reference_jsonl.py` — deterministic simulator, no LLM invoked. Proves the protocol.
+- `hermes_cli.py` — drives a real `hermes` CLI in headless mode.
+- `codex_cli.py` — drives a real `codex exec` in headless mode.
+
+```bash
+hunt adapter add hermes-cli --exec "$(command -v python3)" \
+  --arg /absolute/path/to/examples/adapters/hermes_cli.py
+hunt adapter doctor hermes-cli
+hunt run start --target 1 --rounds 2 --adapter hermes-cli
+```
 
 ### Plugin Mode (Claude Code / ZCode)
 
