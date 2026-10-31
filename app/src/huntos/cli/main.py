@@ -1656,6 +1656,91 @@ def _source_hook_wrapper_path() -> Path:
     return _DATA_ROOT / "hooks" / "claim_gate_wrapper.sh"
 
 
+def _proc_tail(proc: "subprocess.CompletedProcess", limit: int) -> str:
+    """The last `limit` chars of a completed process's combined output.
+
+    Tolerates both bytes and str streams (subprocess.run with text=True
+    yields str; a hand-built CompletedProcess in a test may be either).
+    """
+    def _text(stream) -> str:
+        if stream is None:
+            return ""
+        if isinstance(stream, bytes):
+            return stream.decode("utf-8", errors="replace")
+        return str(stream)
+
+    return (_text(proc.stdout) + _text(proc.stderr)).strip()[-limit:]
+
+
+def _repo_root() -> Path:
+    """The checkout root, resolved from THIS file with a cwd fallback.
+
+    Source layout: <repo>/app/src/huntos/cli/main.py, so parents[4] is the
+    repo root. An installed wheel puts the package in site-packages, where
+    parents[4] is meaningless — hence the fallback to the operator's cwd
+    (the documented place to run `hunt doctor` from). Tests may monkeypatch
+    this to point the plugin-tree check at a fixture checkout.
+    """
+    from_package = Path(__file__).resolve().parents[4]
+    if (from_package / "scripts" / "build_plugin.py").is_file():
+        return from_package
+    return Path(os.getcwd())
+
+
+def _repo_root_candidates() -> "list[Path]":
+    """Every plausible checkout root, most likely first, deduplicated.
+
+    The wheel ships only the `huntos` package (see app/pyproject.toml's
+    package-data allowlist): `mcp/server.py`, `scripts/build_plugin.py` and
+    `hooks/hooks.json` are NOT inside it. So an installed wheel has no
+    checkout root at all, and the runtime-readiness checks must be able to
+    say "not packaged" instead of failing on a path that was never shipped.
+    These candidates are what a wheel install can still discover: the
+    operator's cwd, the cwd of the caller's parents, and the directory the
+    `hunt` entry point was invoked from. None of them is required to exist.
+    """
+    seen: "list[Path]" = []
+    for candidate in (Path(os.getcwd()),
+                      Path.cwd().resolve(),
+                      Path(sys.argv[0]).resolve().parent if sys.argv[0] else None):
+        if candidate is None:
+            continue
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if resolved not in seen:
+            seen.append(resolved)
+    return seen
+
+
+def _mcp_server_path() -> Path:
+    """The hand-written MCP server (mcp/server.py), repo-root relative."""
+    return _repo_root() / "mcp" / "server.py"
+
+
+def _build_plugin_script() -> Path:
+    """The plugin generator whose --check mode reports tree drift."""
+    return _repo_root() / "scripts" / "build_plugin.py"
+
+
+def _installed_hooks_files(adapter: "str | None", dest: "Path | None") -> "list[Path]":
+    """Every hooks.json an installed adapter destination carries.
+
+    Resolution mirrors the existing checks: with --adapter the resolved
+    destination's hunt-os/hooks/hooks.json; without an adapter the packaged
+    _data/hooks copy (which ships no hooks.json today, so the common
+    no-adapter run reports "no installed hooks to validate"). A hooks.json
+    is optional in the installed layout, so absence is never a failure.
+    """
+    candidates: "list[Path]" = []
+    if adapter in SKILLS_ADAPTERS and dest is not None:
+        candidates.append(dest / ROUTER_DIR_NAME / "hooks" / "hooks.json")
+    else:
+        candidates.append(_DATA_ROOT / "hooks" / "hooks.json")
+    return [p for p in candidates if p.is_file()]
+
+
 def cmd_doctor(args, conn) -> int:
     """`hunt doctor` (L3.4): the workspace preflight. Each check prints
     `ok` or `FAIL: ...`; exit 2 when any check failed. Default = no adapter:
@@ -1800,6 +1885,117 @@ def cmd_doctor(args, conn) -> int:
         print("diagnostics:")
         for line in diagnostics:
             print(f"  {line}")
+
+    # -- 8..10. Runtime readiness: the three things a fresh operator hits
+    # AFTER the workspace preflight passes. The MCP server is imported by
+    # file path (no spawn: doctor stays fast and side-effect-free), the
+    # generated plugin tree is diffed against the checkout, and every
+    # installed hooks.json is parsed. Each prints through the same
+    # report() helper, so the output shape and the exit-2 contract hold.
+
+    # -- 8. MCP server: importable AND its tool table is well-formed.
+    # The server is hand-written (not generated), stdlib only, and has no
+    # import-time side effects, so importing it IS the check. A missing
+    # file or a raising import is the FAIL detail.
+    #
+    # NOT PACKAGED IS NOT A FAILURE. The wheel ships only the `huntos`
+    # package (pyproject's package-data allowlist), so `mcp/server.py` does
+    # not exist in a wheel install at all. When no candidate root carries
+    # it, the check reports ok with "mcp server not packaged" — the same
+    # shape the plugin-tree check uses for a missing build script — instead
+    # of failing a legitimate wheel install. A checkout that HAS the file
+    # but a broken one still FAILs.
+    mcp_server_path = _mcp_server_path()
+    if not mcp_server_path.is_file():
+        packaged = any((root / "mcp" / "server.py").is_file()
+                       for root in _repo_root_candidates())
+        if packaged:
+            report("mcp-server", False,
+                   f"mcp server not found at {mcp_server_path}")
+        else:
+            report("mcp-server", True, "mcp server not packaged (source checkout only)")
+    else:
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "hunt_os_doctor_mcp_server", mcp_server_path)
+            if spec is None or spec.loader is None:
+                raise ValueError(f"cannot build an import spec for {mcp_server_path}")
+            mcp_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mcp_module)
+            tools = getattr(mcp_module, "TOOLS", None)
+            if not isinstance(tools, dict) or not tools:
+                raise ValueError(
+                    f"TOOLS is {type(tools).__name__}, expected a non-empty dict")
+            for name, tool in tools.items():
+                schema = tool.get("inputSchema") if isinstance(tool, dict) else None
+                if not isinstance(schema, dict):
+                    raise ValueError(f"tool {name!r} inputSchema is not a dict")
+                if schema.get("type") != "object":
+                    raise ValueError(
+                        f"tool {name!r} inputSchema type is "
+                        f"{schema.get('type')!r}, expected 'object'")
+                if "additionalProperties" not in schema:
+                    raise ValueError(
+                        f"tool {name!r} inputSchema is missing "
+                        f"'additionalProperties'")
+            report("mcp-server", True, f"{len(tools)} tools")
+        except Exception as exc:  # a raising import IS the failure
+            report("mcp-server", False, f"{type(exc).__name__}: {exc}")
+
+    # -- 9. Plugin tree: the generated tree matches the checkout. An
+    # installed wheel legitimately has no scripts/ dir, so a missing build
+    # script is reported OK (source-checkout only) instead of failing.
+    build_script = _build_plugin_script()
+    if not build_script.is_file():
+        report("plugin-tree", True, "build script not packaged (source checkout only)")
+    else:
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(build_script), "--check"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            report("plugin-tree", False, f"could not run {build_script}: {exc}")
+        else:
+            if proc.returncode == 0:
+                report("plugin-tree", True)
+            else:
+                report("plugin-tree", False, _proc_tail(proc, 400))
+
+    # -- 10. Installed hooks.json: every adapter destination that carries a
+    # hooks document parses as the Claude-Code shape {EventName: [...]}.
+    hooks_files = _installed_hooks_files(adapter, dest)
+    if not hooks_files:
+        report("hooks-json", True, "no installed hooks to validate")
+    else:
+        hooks_fail = 0
+        hooks_detail = ""
+        for path in hooks_files:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                hooks_fail += 1
+                hooks_detail = f"{path}: {exc}"
+                break
+            if not isinstance(data, dict):
+                hooks_fail += 1
+                hooks_detail = (
+                    f"{path}: top level is {type(data).__name__}, expected object")
+                break
+            # accept the plugin envelope {"hooks": {Event: [...]}} and the
+            # flat form {Event: [...]} — both are in the wild
+            groups = data.get("hooks") if set(data) == {"hooks"} else data
+            if not isinstance(groups, dict) or not all(
+                    isinstance(v, list) for v in groups.values()):
+                hooks_fail += 1
+                hooks_detail = (
+                    f"{path}: every value must be a list of hook entries")
+                break
+        if hooks_fail:
+            report("hooks-json", False, hooks_detail)
+        else:
+            report("hooks-json", True, f"{len(hooks_files)} document(s) validated")
 
     return 2 if fails else 0
 
@@ -2566,7 +2762,8 @@ def main(argv=None) -> int:
     pi.add_argument(
         "--check", action="store_true",
         help="verify every manifest file hash (roles and hooks included); "
-             "exit 1 on drift",
+             "exit 1 on drift; a missing manifest (nothing installed yet) "
+             "is an informational success: exit 0",
     )
     pi.add_argument(
         "--uninstall", action="store_true",
@@ -2621,7 +2818,8 @@ def main(argv=None) -> int:
     pdoc = sub.add_parser(
         "doctor",
         help="workspace preflight: cli, db, project lock, claim gate, skills "
-             "layer, hook wrapper — each prints ok / FAIL; --adapter mock adds "
+             "layer, hook wrapper, mcp server, plugin tree, installed "
+             "hooks.json — each prints ok / FAIL; --adapter mock adds "
              "the conductor capability dump",
     )
     pdoc.add_argument(

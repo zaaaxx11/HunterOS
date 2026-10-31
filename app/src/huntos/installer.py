@@ -628,7 +628,22 @@ def cmd_check(args: argparse.Namespace) -> int:
     skills_dir = resolve_skills_dir(args.adapter, args.scope, args.dir)
     manifest = _load_manifest(skills_dir)
     if not manifest:
-        _fail(f"no {MANIFEST_NAME} in {skills_dir} - nothing to check")
+        # NOT INSTALLED IS NOT AN ERROR. A preflight check asks "is the
+        # installed layer still what the manifest recorded?", and the honest
+        # answer on a fresh machine (or right after --uninstall) is "there is
+        # nothing to verify yet". That is a legitimate, successful state:
+        # `hunt install --check` is the probe CI runs before it installs, so
+        # exiting 1 here would fail a pipeline that is about to do the right
+        # thing. Print the resolved dir and the exact command that fixes it,
+        # and exit 0. `--uninstall` on the same state STILL fails (below):
+        # removing something that was never installed is a genuine operator
+        # mistake, not a preflight question.
+        print(
+            f"HUNT-OS: not installed (no {MANIFEST_NAME} in {skills_dir}) "
+            f"- run: hunt install --adapter {args.adapter} "
+            f"--scope {args.scope}"
+        )
+        return 0
 
     missing, modified = [], []
     files = manifest.get("files", [])
@@ -750,7 +765,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--check", action="store_true",
         help="verify every manifest file hash; exit 1 on drift. A change in "
              "the source corpus since install is reported as a WARNING line "
-             "only (exit code unchanged)",
+             "only (exit code unchanged). A missing manifest (nothing "
+             "installed yet) is an informational success: exit 0",
     )
     parser.add_argument(
         "--uninstall", action="store_true",

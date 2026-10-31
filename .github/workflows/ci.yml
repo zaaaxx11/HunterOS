@@ -276,6 +276,13 @@ jobs:
           rc=0
           echo 'PROVEN[F-9]' | HUNT_DB="$fresh/none.db" python3 "$gate" || rc=$?
           test "$rc" -eq 2
+          # doctor must stay green from a wheel install: mcp/server.py,
+          # scripts/build_plugin.py and hooks/hooks.json live at the repo
+          # root and are NOT packaged, so those three checks report
+          # "not packaged (source checkout only)" instead of failing — an
+          # earlier version wrongly FAILed a legitimate install, so pin
+          # the exit code here (set -e catches the exit-2 regression)
+          hunt doctor
           echo "wheel install smoke OK"
 
       - name: Generic install and Python claim wrapper
