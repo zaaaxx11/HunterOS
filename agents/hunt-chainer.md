@@ -1,6 +1,6 @@
 ---
 name: hunt-chainer
-description: Chainer lane: turn findings into exploit chains entry-to-impact (HunterOS lane 4)
+description: Chainer lane: turn findings into exploit chains entry-to-impact (HunterOS Plugins lane 4)
 tools: Read, Grep, Glob, Bash
 ---
 

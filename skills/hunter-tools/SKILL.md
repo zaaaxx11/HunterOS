@@ -4,7 +4,7 @@ description: HunterOs tool registry — 43 JSON-Schema tools usable by any LLM a
 ---
 # HUNTEROS UNIVERSAL TOOL REGISTRY
 
-43 tools extracted from `zaaaxx11/HunterOsHarness v0.7`. Each tool follows
+43 tools extracted from `zaaaxx11/HunterOsHarnessOsHarness v0.7`. Each tool follows
 JSON-Schema, compatible with Claude Code `tools:`, OpenCode `tools:`,
 Hermes `tool_spec`, and any OpenAI-compatible function-calling registry.
 

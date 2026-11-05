@@ -5,7 +5,7 @@ allowed-tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
 ---
 # HUNTEROS HARNESS — Universal Core Engine
 
-Extracted from `zaaaxx11/HunterOsHarness v0.7`. Portable skills usable by any harness
+Extracted from `zaaaxx11/HunterOsHarnessOsHarness v0.7`. Portable skills usable by any harness
 (Claude Code, Hermes Agent, OpenCode, Codex, etc.) — just fill the templates,
 point at a target, and the loop runs.
 
@@ -23,7 +23,7 @@ hunter loop <target> --time 6h --goals rce-min:1,findings-min:500
 
 ```bash
 # Install the harness
-pip install git+https://github.com/zaaaxx11/HunterOsHarness.git
+pip install git+https://github.com/zaaaxx11/HunterOsHarnessOsHarness.git
 
 # Start a 6-hour loop hunt against a local directory
 hunter loop /path/to/repo --time 6h --goals exploitable-min:1,findings-min:1000 --engine llm --yes

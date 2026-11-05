@@ -1,6 +1,6 @@
 ---
 name: hunt-fuzz-engineer
-description: Fuzz-engineer lane: edge-case high-risk sinks until something breaks (HunterOS lane 3)
+description: Fuzz-engineer lane: edge-case high-risk sinks until something breaks (HunterOS Plugins lane 3)
 tools: Read, Grep, Glob, Bash
 ---
 

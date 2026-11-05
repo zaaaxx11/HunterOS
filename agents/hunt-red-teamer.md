@@ -1,6 +1,6 @@
 ---
 name: hunt-red-teamer
-description: Red-teamer lane: break invariants on the architect's trust graph (HunterOS lane 2)
+description: Red-teamer lane: break invariants on the architect's trust graph (HunterOS Plugins lane 2)
 tools: Read, Grep, Glob, Bash
 ---
 

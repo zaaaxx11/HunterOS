@@ -1,27 +1,27 @@
-# HunterOS Quick Start
+# HunterOS Plugins Quick Start
 
 ## Install as skills/tools plugin
 
 ```bash
-git clone https://github.com/zaaaxx11/HunterOS.git ~/.hunter-os
+git clone https://github.com/zaaaxx11/hunteros-plugins.git ~/.hunteros-plugins
 ```
 
 ## Use with your agent harness
 
 **Claude Code:**
 ```
-/plugin marketplace add zaaaxx11/HunterOS
+/plugin marketplace add zaaaxx11/hunteros-plugins
 /plugin install hunt-os@hunter-os
 ```
 
 **Hermes Agent:**
 ```bash
-ln -s ~/.hunter-os/skills ~/.hermes/profiles/default/skills/hunter
+ln -s ~/.hunteros-plugins/skills ~/.hermes/profiles/default/skills/hunter
 ```
 
 **OpenCode/Codex:**
 ```bash
-cp -r ~/.hunter-os/skills ~/your-project/ai_skills/
+cp -r ~/.hunteros-plugins/skills ~/your-project/ai_skills/
 ```
 
 ## Load a skill

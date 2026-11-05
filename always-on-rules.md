@@ -1,6 +1,6 @@
 # HUNT-OS doctrine (always-on rules)
 
-Public assessment session contract, RoE-first. Source: HunterOS HUNT-BRIDGE.md.
+Public assessment session contract, RoE-first. Source: HunterOS Plugins HUNT-BRIDGE.md.
 
 ## AUTHORIZATION FIRST
 

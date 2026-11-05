@@ -1,6 +1,6 @@
 ---
 name: hunt-lane-runner
-description: Lane-runner: orchestrate one hunt wave as a round loop over four lanes (HunterOS)
+description: Lane-runner: orchestrate one hunt wave as a round loop over four lanes (HunterOS Plugins)
 tools: Read, Grep, Glob, Bash
 ---
 

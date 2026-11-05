@@ -1,4 +1,4 @@
-# AGENTS.md — HunterOS Skills & Tools Repository
+# AGENTS.md — HunterOS Plugins — portable security skills, tools, hooks, and agents
 
 This is a **skills/tools/hooks repository** — it does NOT contain a runnable app.
 It plugs into agent harnesses (Claude Code, Hermes, OpenCode, Codex).

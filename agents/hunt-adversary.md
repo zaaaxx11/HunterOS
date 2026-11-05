@@ -1,6 +1,6 @@
 ---
 name: hunt-adversary
-description: Blind adversary: disprove one finding, verdict SURVIVES or OVERTURNED (HunterOS)
+description: Blind adversary: disprove one finding, verdict SURVIVES or OVERTURNED (HunterOS Plugins)
 tools: Read, Grep, Glob, Bash
 ---
 

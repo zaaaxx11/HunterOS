@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""HunterOS MCP server: stdio JSON-RPC 2.0, stdlib only.
+"""HunterOS Plugins MCP server: stdio JSON-RPC 2.0, stdlib only.
 
-Exposes a fixed set of HunterOS CLI verbs as MCP tools. Every tool call runs
+Exposes a fixed set of HunterOS Plugins CLI verbs as MCP tools. Every tool call runs
 the CLI as a subprocess with an argv list (shell=False). Domain failures are
 returned as tool results with isError=true, never as JSON-RPC protocol errors.
 
@@ -422,7 +422,7 @@ _FOLLOWUP_STATE = ("open", "verified", "dropped", "promoted")
 TOOLS: dict[str, dict] = {
     # --- read tools ---
     "hunt_status": {
-        "description": "Show HunterOS status for the current ledger (HUNT_DB).",
+        "description": "Show HunterOS Plugins status for the current ledger (HUNT_DB).",
         "annotations": _READ,
         "inputSchema": _obj({}, []),
         "argv": _argv_status,
@@ -879,12 +879,12 @@ def execute(sub_argv: list[str], environ=None) -> dict:
         )
     except FileNotFoundError:
         return _tool_result(
-            f"HunterOS CLI not found: {argv[0]!r}. Set HUNT_CLI to a working "
+            f"HunterOS Plugins CLI not found: {argv[0]!r}. Set HUNT_CLI to a working "
             "command prefix, or install the 'hunt' console script.",
             True,
         )
     except OSError as exc:
-        return _tool_result(f"could not start HunterOS CLI {argv[0]!r}: {exc}", True)
+        return _tool_result(f"could not start HunterOS Plugins CLI {argv[0]!r}: {exc}", True)
 
     try:
         out, err = proc.communicate(timeout=timeout)

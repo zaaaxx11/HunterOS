@@ -7,11 +7,11 @@ allowed-tools: Read, Grep, Glob, Bash
 # HUNT-OS — hunting skills router
 
 RoE-first doctrine (see `${CLAUDE_PLUGIN_ROOT}/always-on-rules.md`, injected at
-SessionStart). This router is the map; the corpus behind it is the HunterOS
+SessionStart). This router is the map; the corpus behind it is the HunterOS Plugins
 skills tree (5 categories, 51 skills). Never bulk-load: pick the category that
 matches the target, then load ONE skill at a time, only what the lane needs.
 
-Scope note: this skill covers HunterOS lanes (architect, red-teamer,
+Scope note: this skill covers HunterOS Plugins lanes (architect, red-teamer,
 fuzz-engineer, chainer, lane-runner, adversary, verifier). Lane/agent details
 live in this plugin's `agents/` directory.
 

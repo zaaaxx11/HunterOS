@@ -1,6 +1,6 @@
 ---
 name: hunt-verifier
-description: Verifier: convert in-code claims into executed-PoC evidence or kill them (HunterOS)
+description: Verifier: convert in-code claims into executed-PoC evidence or kill them (HunterOS Plugins)
 tools: Read, Grep, Glob, Bash
 ---
 

@@ -1,7 +1,7 @@
 {
-  "name": "hunter-os",
+  "name": "hunteros-plugins",
   "version": "0.7.0",
-  "description": "HUNT-OS authorized security-assessment framework — no daemon, loop-driven, goals-aware hunting with 43 universal tools and multi-agent lanes.",
+  "description": "HunterOS Plugins — portable security skills, tools, hooks, and agents for any LLM agent harness",
   "plugins": [
     {
       "name": "hunt-os",
@@ -39,5 +39,11 @@
       "category": "security"
     }
   ],
-  "skills": ["hunt-os", "hunter-harness-core", "hunter-loop", "hunter-tools", "hunter-agent-lanes"]
+  "skills": [
+    "hunt-os",
+    "hunter-harness-core",
+    "hunter-loop",
+    "hunter-tools",
+    "hunter-agent-lanes"
+  ]
 }

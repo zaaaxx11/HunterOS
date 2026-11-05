@@ -15,7 +15,7 @@ checklist pass.
 
 ## Provenance
 
-Reconstructed for HunterOS. The source skills pack (master catalog,
+Reconstructed for HunterOS Plugins. The source skills pack (master catalog,
 category 03) lists `black-swan-engine` but ships no standalone file for it;
 the 19 laws below were derived from first principles and consolidated from
 the landing corpus of web3 hunt skills in `skills/web3/` (each law

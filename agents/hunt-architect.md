@@ -1,6 +1,6 @@
 ---
 name: hunt-architect
-description: Architect lane: map the trust graph before anyone attacks (HunterOS lane 1)
+description: Architect lane: map the trust graph before anyone attacks (HunterOS Plugins lane 1)
 tools: Read, Grep, Glob, Bash
 ---
 

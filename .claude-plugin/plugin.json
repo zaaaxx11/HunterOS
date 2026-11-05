@@ -1,7 +1,7 @@
 {
   "name": "hunt-os",
   "version": "0.4.0",
-  "description": "HUNT-OS authorized security-assessment framework: RoE-gated hunt CLI, evidence ladder, and claim gate for Claude Code and ZCode.",
+  "description": "HunterOS Plugins — RoE-gated hunt CLI, evidence ladder, and claim gate for all agent harnesses",
   "author": {
     "name": "Mafaza Bagas"
   },

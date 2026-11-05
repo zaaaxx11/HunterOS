@@ -1,4 +1,4 @@
-# HUNTEROS — Universal Security Skills & Tools
+# HunterOS Plugins — Universal Security Skills & Tools
 
 A portable, harness-agnostic security framework. **No daemon, no app — just
 skills, tools, hooks, and agents** that plug into any LLM agent framework.
@@ -48,16 +48,16 @@ Standard Model Context Protocol server exposing `hunt_*` tools.
 
 ```bash
 # Clone the skills repo
-git clone https://github.com/zaaaxx11/HunterOS.git ~/.hunter-os
+git clone https://github.com/zaaaxx11/hunteros-plugins.git ~/.hunteros-plugins
 
 # Claude Code
-cp -r ~/.hunter-os/.claude-plugin ~/your-project/
+cp -r ~/.hunteros-plugins/.claude-plugin ~/your-project/
 
 # Hermes Agent
-ln -s ~/.hunter-os/skills ~/.hermes/profiles/default/skills/hunter
+ln -s ~/.hunteros-plugins/skills ~/.hermes/profiles/default/skills/hunter
 
 # OpenCode
-cp ~/.hunter-os/marketplace.json ~/your-project/opencode_skills.json
+cp ~/.hunteros-plugins/marketplace.json ~/your-project/opencode_skills.json
 ```
 
 ### Install the harness (optional — for `hunter loop` and full engine)
@@ -99,7 +99,7 @@ All tools follow JSON-Schema — plug into any function-calling agent.
 ## Repo Structure
 
 ```
-HunterOS/
+hunteros-plugins/
 ├── skills/          # Markdown skill files (load one at a time)
 │   ├── hunt-os/     # Router + 51 sub-skills
 │   ├── hunter-*/    # Harness engine, loop, tools, agent lanes
