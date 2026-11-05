@@ -88,6 +88,13 @@ Authorize → Observe → Model → Minimal reversible test → Verify → Repor
 - Verifier (review role, NOT a fifth lane) ← audit-verification-methodology,
   poc-reverification
 
+### hunter-harness — daemon-free loop + universal tools (v0.7)
+
+- hunter-harness-core — full harness engine, state-driven hunting, goals vocabulary
+- hunter-loop — `hunter loop <target> --time 6h --goals rce-min:1`
+- hunter-tools — 43 JSON-Schema tools (Claude Code, Hermes, OpenCode adapters)
+- hunter-agent-lanes — multi-agent lane dispatcher (architect, red-teamer, etc.)
+
 ## CLAIM DISCIPLINE
 
 Strong claims (PROVEN, EXPLOITABLE, "admin takeover") must name their ledger

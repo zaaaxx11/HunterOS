@@ -1,5 +1,7 @@
 {
   "name": "hunter-os",
+  "version": "0.7.0",
+  "description": "HUNT-OS authorized security-assessment framework — no daemon, loop-driven, goals-aware hunting with 43 universal tools and multi-agent lanes.",
   "plugins": [
     {
       "name": "hunt-os",
@@ -7,6 +9,35 @@
       "version": "0.4.0",
       "description": "HUNT-OS authorized security-assessment framework with RoE gating and claim-gate enforcement.",
       "category": "security"
+    },
+    {
+      "name": "hunter-harness-core",
+      "source": ".",
+      "version": "0.7.0",
+      "description": "Daemon-free state-driven loop hunt with 43 universal tools, goals vocabulary, and multi-agent lanes.",
+      "category": "security"
+    },
+    {
+      "name": "hunter-loop",
+      "source": ".",
+      "version": "0.7.0",
+      "description": "State-driven continuous hunting loop with time budget and goal tracking.",
+      "category": "security"
+    },
+    {
+      "name": "hunter-tools",
+      "source": ".",
+      "version": "0.7.0",
+      "description": "43 JSON-Schema tools usable by any LLM agent framework.",
+      "category": "tools"
+    },
+    {
+      "name": "hunter-agent-lanes",
+      "source": ".",
+      "version": "0.7.0",
+      "description": "Multi-agent lane dispatcher: architect, red-teamer, fuzz-engineer, chainer, verifier.",
+      "category": "security"
     }
-  ]
+  ],
+  "skills": ["hunt-os", "hunter-harness-core", "hunter-loop", "hunter-tools", "hunter-agent-lanes"]
 }
