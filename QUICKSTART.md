@@ -1,42 +1,62 @@
 # HunterOS Plugins Quick Start
 
-## Install as skills/tools plugin
+## Native Claude Code Install (Recommended)
 
 ```bash
 git clone https://github.com/zaaaxx11/hunteros-plugins.git ~/.hunteros-plugins
+
+# Install skills — copy to user-level Claude Code directory
+mkdir -p ~/.claude/skills ~/.claude/agents
+cp -r ~/.hunteros-plugins/.claude/skills/* ~/.claude/skills/
+cp -r ~/.hunteros-plugins/.claude/agents/* ~/.claude/agents/
 ```
 
-## Use with your agent harness
+Restart Claude Code and the skills are available.
 
-**Claude Code:**
+## Load a skill
+
+Tell Claude Code:
+```
+load hunt-recon-predator-recon
+load hunt-web2-web2-attack-surface-audit
+load hunt-web3-black-swan-engine
+```
+
+Or load the router first:
+```
+load hunt-os
+```
+to see the full 51-skill index and pick your target category.
+
+## Agent Lanes
+
+7 pre-built agents available via the Agent tool:
+
+| Agent | Role |
+|-------|------|
+| `hunt-architect` | Attack-surface mapping |
+| `hunt-red-teamer` | Auth/authz testing, injection |
+| `hunt-fuzz-engineer` | Edge cases, constraints |
+| `hunt-chainer` | Exploit chain construction |
+| `hunt-verifier` | Evidence checking |
+| `hunt-adversary` | Adversarial review |
+| `hunt-lane-runner` | Lane dispatcher |
+
+## Plugin Install (Legacy)
+
 ```
 /plugin marketplace add zaaaxx11/hunteros-plugins
 /plugin install hunt-os@hunter-os
 ```
 
-**Hermes Agent:**
+## Hermes Agent
+
 ```bash
 ln -s ~/.hunteros-plugins/skills ~/.hermes/profiles/default/skills/hunter
 ```
 
-**OpenCode/Codex:**
+## OpenCode/Codex
+
 ```bash
 cp -r ~/.hunteros-plugins/skills ~/your-project/ai_skills/
-```
-
-## Load a skill
-
-Tell your agent:
-```
-load the hunter-harness-core skill
-load the hunter-loop skill
-```
-
-Each skill is self-contained markdown. Load only what the lane needs.
-
-## Full harness (optional)
-
-```bash
-pip install git+https://github.com/zaaaxx11/HunterOsHarness.git
-hunter loop /path/to/target --time 6h --goals rce-min:1,findings-min:500 --yes
 ```

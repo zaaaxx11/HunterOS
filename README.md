@@ -46,18 +46,42 @@ Standard Model Context Protocol server exposing `hunt_*` tools.
 
 ## Quick Start
 
+### Native Claude Code (Recommended — 51 skills + 7 agents)
+
 ```bash
-# Clone the skills repo
 git clone https://github.com/zaaaxx11/hunteros-plugins.git ~/.hunteros-plugins
 
-# Claude Code
-cp -r ~/.hunteros-plugins/.claude-plugin ~/your-project/
+# One-time install to user-level Claude Code
+mkdir -p ~/.claude/skills ~/.claude/agents
+cp -r ~/.hunteros-plugins/.claude/skills/* ~/.claude/skills/
+cp -r ~/.hunteros-plugins/.claude/agents/* ~/.claude/agents/
+```
 
-# Hermes Agent
+Restart Claude Code. Skills are auto-discovered. Load any skill:
+```
+load hunt-os                 # Router (51-skill index)
+load hunt-web2-attack-surface-audit  # Web2 audit
+load hunt-web3-black-swan-engine     # EVM vulnerability laws
+load hunt-recon-predator-recon       # Recon pipeline
+```
+
+7 agents available: `hunt-architect`, `hunt-red-teamer`, `hunt-fuzz-engineer`, `hunt-chainer`, `hunt-verifier`, `hunt-adversary`, `hunt-lane-runner`.
+
+### Plugin Install (Legacy)
+
+```
+/plugin marketplace add zaaaxx11/hunteros-plugins
+/plugin install hunt-os@hunter-os
+```
+
+### Hermes Agent
+```bash
 ln -s ~/.hunteros-plugins/skills ~/.hermes/profiles/default/skills/hunter
+```
 
-# OpenCode
-cp ~/.hunteros-plugins/marketplace.json ~/your-project/opencode_skills.json
+### OpenCode/Codex
+```bash
+cp -r ~/.hunteros-plugins/skills ~/your-project/ai_skills/
 ```
 
 ### Install the harness (optional — for `hunter loop` and full engine)
